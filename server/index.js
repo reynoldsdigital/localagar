@@ -89,13 +89,23 @@ const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
 wss.on("connection", (ws, req) => {
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "?").toString();
+  console.log(`[ws] connected from ${ip} ua=${(req.headers["user-agent"] || "?").toString().slice(0, 60)}`);
   let player = null;
   let room = null;
+  let alive = true;
+
+  ws.on("close", () => {
+    alive = false;
+    console.log(`[ws] closed ip=${ip} player=${player?.id || "(none)"}`);
+    if (player && room) server.removePlayer(player.id, room);
+  });
 
   ws.on("message", (raw) => {
     let msg;
-    try { msg = JSON.parse(raw.toString()); } catch { return; }
+    try { msg = JSON.parse(raw.toString()); } catch (e) { console.warn(`[ws] bad json from ${ip}`); return; }
     if (!msg || typeof msg.t !== "string") return;
+    if (msg.t === "join") console.log(`[ws] join from ${ip} name=${msg.name} mode=${msg.mode}`);
+    else if (alive) console.log(`[ws] ${msg.t} from ${ip}`);
 
     switch (msg.t) {
       case "join": {
@@ -154,14 +164,6 @@ wss.on("connection", (ws, req) => {
         break;
       }
     }
-  });
-
-  ws.on("close", () => {
-    if (player && room) server.removePlayer(player.id, room);
-  });
-
-  ws.on("error", () => {
-    if (player && room) server.removePlayer(player.id, room);
   });
 });
 
