@@ -14,6 +14,13 @@
   "dependencies": {
     "ws": "^8.18.0"
   },
-  "keywords": ["agar", "agarz", "io-game", "multiplayer", "canvas", "websockets"],
+  "keywords": [
+    "agar",
+    "agarz",
+    "io-game",
+    "multiplayer",
+    "canvas",
+    "websockets"
+  ],
   "license": "MIT"
 }
