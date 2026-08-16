@@ -1,7 +1,7 @@
 // Per-tick physics: movement, splitting, ejecting, merging, decay.
 
 import {
-  CELL, WORLD, massToRadius, clamp,
+  CELL, WORLD, TICK_RATE, massToRadius, clamp,
 } from "../shared/constants.js";
 import { Cell } from "./player.js";
 
@@ -40,9 +40,14 @@ export function moveCell(cell, owner, dt) {
   if (cell.y > WORLD.HEIGHT) { cell.y = WORLD.HEIGHT; cell.vy = 0; }
 }
 
-export function decayCell(cell, dtSec) {
+export function decayCell(cell, dt) {
   if (cell.mass <= CELL.MIN_MASS) return;
-  cell.mass -= CELL.DECAY_PER_MIN / 60 * dtSec * 60; // per minute -> per tick
+  // dt is in tick units (1.0 = one full 33ms tick at TICK_RATE=30). Convert
+  // to seconds so DECAY_PER_MIN (mass-per-minute) is applied correctly.
+  // Bug prior: we computed DECAY_PER_MIN/60 * dt * 60, which at dt=1 dropped
+  // a full unit per tick == 30 units/second (cell with mass 30 died in 1s).
+  const dtSec = dt / TICK_RATE;
+  cell.mass -= (CELL.DECAY_PER_MIN / 60) * dtSec;
   if (cell.mass < CELL.MIN_MASS) cell.mass = CELL.MIN_MASS;
 }
 

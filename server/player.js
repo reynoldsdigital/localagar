@@ -53,7 +53,17 @@ export class Player {
     this.targetX = cell.x;
     this.targetY = cell.y;
     this.score = mass;
+    // Spawn a starter cluster of pellets around the cell so the player
+    // always has food nearby on joining (otherwise they can decay to
+    // MIN_MASS before finding any pellets in the sparse world).
+    if (this._starterCluster && typeof this._starterCluster === "function") {
+      this._starterCluster(cell.x, cell.y);
+    }
     return cell;
+  }
+
+  setStarterClusterSpawner(fn) {
+    this._starterCluster = fn;
   }
 
   recomputeScore() {

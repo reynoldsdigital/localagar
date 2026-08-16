@@ -1,9 +1,12 @@
-// Renderer: applies server snapshots, draws to the canvas. Interpolation is
-// implicit because snapshots arrive every ~33ms and we redraw every animation
-// frame — positions look smooth enough at 30Hz updates.
+// Renderer: applies server snapshots, draws to the canvas. Positions are
+// interpolated between successive snapshots so movement looks smooth even
+// though the server only updates 30 times a second. Each entity stores its
+// previous and current state; at render time we lerp between them using a
+// delay buffer (INTERP_DELAY_MS) so the client is always interpolating
+// slightly behind the freshest possible snapshot.
 
 import { Camera } from "./camera.js";
-import { COLORS, massToRadius } from "../shared/constants.js";
+import { COLORS, massToRadius, INTERP_DELAY_MS } from "../shared/constants.js";
 
 const VIRUS_SPIKES = 20;
 
@@ -14,12 +17,16 @@ export class Renderer {
     this.minimapCanvas = minimapCanvas;
     this.minimapCtx = minimapCanvas.getContext("2d");
     this.camera = new Camera();
-    this.cells = new Map();       // id -> { x, y, m, o, c, n, cl }
-    this.pellets = new Map();     // id -> { x, y, m, e }
-    this.viruses = new Map();     // id -> { x, y, m }
-    this.you = [];                // [{ id, x, y, m }] from server (your own cells)
+    // Each entity has two slots: prev (older) and curr (latest). At render
+    // time we lerp between prev and curr based on the local render time.
+    this.cells = new Map();       // id -> { x, y, m, o, c, n, cl, px, py, pm }
+    this.pellets = new Map();     // id -> { x, y, m, e, px, py }
+    this.viruses = new Map();     // id -> { x, y, m, px, py }
+    this.you = [];                // [{ id, x, y, m, px, py, pm }] from server
     this.leaderboard = [];
     this.snapshotTs = 0;
+    this._snapshotLocalTime = 0;  // performance.now() when latest snapshot arrived
+    this._snapshotInterval = 33;  // updated as snapshots arrive
     this.alive = true;
     this._deathAtLocal = 0;
     this._raf = 0;
@@ -52,10 +59,28 @@ export class Renderer {
   getLeaderboard() { return this.leaderboard; }
 
   applySnapshot(msg) {
+    const now = performance.now();
+    // Track average snapshot interval so we know how far to interpolate.
+    if (this._snapshotLocalTime > 0) {
+      const interval = now - this._snapshotLocalTime;
+      // Smooth the interval estimate so a single jittery delivery doesn't
+      // pop the lerp.
+      this._snapshotInterval = this._snapshotInterval * 0.7 + interval * 0.3;
+    }
+    this._snapshotLocalTime = now;
     this.snapshotTs = msg.ts;
     this.view = msg.view;
     if (msg.you) {
-      this.you = msg.you;
+      // Save previous ("from") state for each "you" cell so we can lerp.
+      const prevById = new Map();
+      for (const y of this.you) prevById.set(y.id, y);
+      this.you = msg.you.map(c => {
+        const prev = prevById.get(c.id);
+        return {
+          id: c.id, x: c.x, y: c.y, m: c.m,
+          px: prev ? prev.x : c.x, py: prev ? prev.y : c.y, pm: prev ? prev.m : c.m,
+        };
+      });
       this.alive = msg.you.length > 0;
       if (!this.alive) {
         if (!this._deathAtLocal) this._deathAtLocal = Date.now();
@@ -69,10 +94,17 @@ export class Renderer {
         seen.add(c.id);
         const prev = this.cells.get(c.id);
         if (prev) {
+          // Shift current -> previous, then write new current.
+          prev.px = prev.x; prev.py = prev.y; prev.pm = prev.m;
           prev.x = c.x; prev.y = c.y; prev.m = c.m;
           prev.o = c.o; prev.c = c.c; prev.n = c.n; prev.cl = c.cl;
         } else {
-          this.cells.set(c.id, { x: c.x, y: c.y, m: c.m, o: c.o, c: c.c, n: c.n, cl: c.cl });
+          // New entity: previous = current so we don't lerp from (0,0).
+          this.cells.set(c.id, {
+            x: c.x, y: c.y, m: c.m,
+            px: c.x, py: c.y, pm: c.m,
+            o: c.o, c: c.c, n: c.n, cl: c.cl,
+          });
         }
       }
       for (const id of this.cells.keys()) {
@@ -84,8 +116,15 @@ export class Renderer {
       for (const p of msg.pellets) {
         seen.add(p.id);
         const prev = this.pellets.get(p.id);
-        if (prev) { prev.x = p.x; prev.y = p.y; prev.m = p.m; prev.e = p.e; }
-        else this.pellets.set(p.id, { x: p.x, y: p.y, m: p.m, e: p.e });
+        if (prev) {
+          prev.px = prev.x; prev.py = prev.y;
+          prev.x = p.x; prev.y = p.y; prev.m = p.m; prev.e = p.e;
+        } else {
+          this.pellets.set(p.id, {
+            x: p.x, y: p.y, m: p.m, e: p.e,
+            px: p.x, py: p.y,
+          });
+        }
       }
       for (const id of this.pellets.keys()) {
         if (!seen.has(id)) this.pellets.delete(id);
@@ -96,8 +135,15 @@ export class Renderer {
       for (const v of msg.viruses) {
         seen.add(v.id);
         const prev = this.viruses.get(v.id);
-        if (prev) { prev.x = v.x; prev.y = v.y; prev.m = v.m; }
-        else this.viruses.set(v.id, { x: v.x, y: v.y, m: v.m });
+        if (prev) {
+          prev.px = prev.x; prev.py = prev.y;
+          prev.x = v.x; prev.y = v.y; prev.m = v.m;
+        } else {
+          this.viruses.set(v.id, {
+            x: v.x, y: v.y, m: v.m,
+            px: v.x, py: v.y,
+          });
+        }
       }
       for (const id of this.viruses.keys()) {
         if (!seen.has(id)) this.viruses.delete(id);
@@ -142,16 +188,34 @@ export class Renderer {
 
   _update(dt) {
     if (this.you.length > 0) {
+      // Interpolate the "you" cells so the camera target also moves smoothly.
+      const t = this._interpAlpha();
       let cx = 0, cy = 0, totalM = 0;
-      for (const c of this.you) { cx += c.x * c.m; cy += c.y * c.m; totalM += c.m; }
-      cx /= totalM; cy /= totalM;
-      this.camera.setTargetCenter(cx, cy, totalM, window.innerWidth, window.innerHeight);
-      this.camera.step(dt);
-      this._lastWorldX = cx; this._lastWorldY = cy; this._hasLast = true;
+      for (const c of this.you) {
+        const x = lerp(c.px, c.x, t);
+        const y = lerp(c.py, c.y, t);
+        const m = lerp(c.pm, c.m, t);
+        cx += x * m; cy += y * m; totalM += m;
+      }
+      if (totalM > 0) {
+        cx /= totalM; cy /= totalM;
+        this.camera.setTargetCenter(cx, cy, totalM, window.innerWidth, window.innerHeight);
+        this.camera.step(dt);
+        this._lastWorldX = cx; this._lastWorldY = cy; this._hasLast = true;
+      }
     } else if (this._hasLast) {
       this.camera.setTargetCenter(this._lastWorldX, this._lastWorldY, 100, window.innerWidth, window.innerHeight);
       this.camera.step(dt);
     }
+  }
+
+  // Interpolation alpha: 0 = use prev state, 1 = use curr state.
+  // We sit INTERP_DELAY_MS behind the freshest snapshot so there's always a
+  // future-looking state to interpolate toward.
+  _interpAlpha() {
+    if (this._snapshotLocalTime <= 0) return 1;
+    const dt = (performance.now() - this._snapshotLocalTime - INTERP_DELAY_MS) / Math.max(1, this._snapshotInterval);
+    return Math.max(0, Math.min(1, dt));
   }
 
   _draw() {
@@ -168,9 +232,13 @@ export class Renderer {
     ctx.strokeStyle = "rgba(255,255,255,0.15)";
     ctx.strokeRect(bx, by, bx2 - bx, by2 - by);
 
+    const t = this._interpAlpha();
+
     // Pellets
     for (const p of this.pellets.values()) {
-      const [sx, sy] = this._worldToScreen(p.x, p.y, w, h);
+      const x = lerp(p.px, p.x, t);
+      const y = lerp(p.py, p.y, t);
+      const [sx, sy] = this._worldToScreen(x, y, w, h);
       const r = Math.max(2, massToRadius(p.m) * this.camera.zoom);
       ctx.beginPath();
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
@@ -180,7 +248,9 @@ export class Renderer {
 
     // Viruses
     for (const v of this.viruses.values()) {
-      const [sx, sy] = this._worldToScreen(v.x, v.y, w, h);
+      const x = lerp(v.px, v.x, t);
+      const y = lerp(v.py, v.y, t);
+      const [sx, sy] = this._worldToScreen(x, y, w, h);
       const r = massToRadius(v.m) * this.camera.zoom;
       drawVirus(ctx, sx, sy, r);
     }
@@ -188,14 +258,18 @@ export class Renderer {
     // Cells — sorted so big ones draw first (smaller on top of bigger)
     const cells = [...this.cells.values()];
     cells.sort((a, b) => b.m - a.m);
+    const youSet = new Set(this.you.map(y => y.id));
     for (const c of cells) {
-      const [sx, sy] = this._worldToScreen(c.x, c.y, w, h);
-      const r = massToRadius(c.m) * this.camera.zoom;
+      const x = lerp(c.px, c.x, t);
+      const y = lerp(c.py, c.y, t);
+      const m = lerp(c.pm, c.m, t);
+      const [sx, sy] = this._worldToScreen(x, y, w, h);
+      const r = massToRadius(m) * this.camera.zoom;
       ctx.beginPath();
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
       ctx.fillStyle = c.c || "#888";
       ctx.fill();
-      if (this.you.find(y => y.id === c.id)) {
+      if (youSet.has(c.id)) {
         ctx.lineWidth = Math.max(2, 4 * this.camera.zoom);
         ctx.strokeStyle = "rgba(255,255,255,0.7)";
         ctx.stroke();
@@ -209,7 +283,7 @@ export class Renderer {
       ctx.shadowBlur = 4;
       ctx.fillText(c.n || "", sx, sy - fontSize * 0.4);
       ctx.font = `500 ${fontSize * 0.7}px ui-sans-serif, system-ui, sans-serif`;
-      ctx.fillText(String(Math.floor(c.m)), sx, sy + fontSize * 0.35);
+      ctx.fillText(String(Math.floor(m)), sx, sy + fontSize * 0.35);
       ctx.shadowBlur = 0;
     }
 
@@ -307,4 +381,8 @@ function drawVirus(ctx, x, y, r) {
   ctx.lineWidth = Math.max(2, r * 0.04);
   ctx.strokeStyle = COLORS.VIRUS_STROKE;
   ctx.stroke();
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
 }

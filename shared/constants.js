@@ -31,9 +31,9 @@ export const CELL = Object.freeze({
 });
 
 export const PELLET = Object.freeze({
-  COUNT: 1500,
-  MASS: 2,
-  RADIUS: 6,
+  COUNT: 4000,
+  MASS: 3,
+  RADIUS: 7,
   PICKUP_RADIUS: 20,
   EJECTED_PICKUP_RADIUS: 28,
 });

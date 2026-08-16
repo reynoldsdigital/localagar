@@ -53,7 +53,24 @@ export class Room {
 
   addPlayer(player) {
     this.players.push(player);
+    // Give every player a starter cluster of pellets so they can begin
+    // growing immediately (and so they don't decay to MIN_MASS before
+    // finding food in an empty patch of the world).
+    player.setStarterClusterSpawner((x, y) => this._spawnStarterCluster(x, y));
     player.spawnInto(this.world, CELL.START_MASS * (1 + (this.cfg.growthMul - 1) * 0.5));
+  }
+
+  _spawnStarterCluster(x, y) {
+    // Drop ~40 pellets in a 400px radius around the spawn point.
+    const count = 40;
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 400;
+      this.pellets.push(new Pellet(
+        clampX(x + Math.cos(a) * r),
+        clampY(y + Math.sin(a) * r),
+      ));
+    }
   }
 
   removePlayer(player) {
@@ -163,15 +180,20 @@ export class Room {
       }
     }
 
-    // Pellet pickups
-    const pelletDecay = [];
+    // Pellet pickups. agar.io-style: a cell absorbs a pellet when their
+    // surfaces overlap (distance < cell.radius + pellet.radius). The 0.7
+    // factor we used before made the cell have to almost be on top of the
+    // pellet center, which made growth feel broken.
     for (const pellet of this.pellets) {
       const candidates = [];
-      grid.query(pellet.x, pellet.y, pellet.radius + 20, candidates);
+      grid.query(pellet.x, pellet.y, pellet.radius + 50, candidates);
       for (const c of candidates) {
         if (!(c instanceof Cell)) continue;
         if (!c.owner.alive) continue;
-        const r = c.radius * 0.7;
+        // Surface-touching pickup: cell surface reaches the pellet's surface.
+        // Use a small bias so the cell can sweep up a pellet that's just
+        // touching the edge, like agar.io.
+        const r = c.radius + pellet.radius * 0.6;
         if (distance(c.x, c.y, pellet.x, pellet.y) < r) {
           c.mass += pellet.mass;
           pellet._dead = true;
@@ -346,7 +368,10 @@ export class Room {
         }
         continue;
       }
-      // Compute viewport: union of all owned cells, expanded by their radii
+      // Compute viewport: union of all owned cells, expanded by their radii.
+      // Use a generous padding so the player always sees enough pellets to
+      // grow — small cells + tiny padding produced a viewport of 800x800
+      // which had <1 pellet on average.
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const c of player.cells) {
         if (c.x - c.radius < minX) minX = c.x - c.radius;
@@ -354,7 +379,11 @@ export class Room {
         if (c.x + c.radius > maxX) maxX = c.x + c.radius;
         if (c.y + c.radius > maxY) maxY = c.y + c.radius;
       }
-      const pad = 400;
+      // Padding scales with the cell's biggest radius — bigger cells need
+      // wider padding to see further, smaller cells just need enough to find
+      // their next pellet.
+      const cellR = player.cells.reduce((m, c) => Math.max(m, c.radius), 0);
+      const pad = Math.max(800, cellR * 8);
       const viewMinX = Math.max(0, minX - pad);
       const viewMinY = Math.max(0, minY - pad);
       const viewMaxX = Math.min(WORLD.WIDTH, maxX + pad);
