@@ -20,6 +20,21 @@ const minimapCanvas = document.getElementById("minimap-canvas");
 const form = document.getElementById("join-form");
 const clanFieldset = document.getElementById("clan-fieldset");
 const modeFieldset = document.getElementById("mode-fieldset");
+const diagEl = document.getElementById("diag");
+
+// Visible diagnostics so connection / module errors surface even without DevTools.
+window.addEventListener("error", (e) => {
+  showDiag(`JS error: ${e.message}\n${e.filename || ""}:${e.lineno || ""}`);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  showDiag(`Promise error: ${e.reason?.message || e.reason}`);
+});
+function showDiag(msg) {
+  if (!diagEl) return;
+  diagEl.textContent = String(msg);
+  diagEl.classList.add("show");
+  console.warn("[localagar diag]", msg);
+}
 
 let state = {
   selfId: null,
@@ -63,6 +78,7 @@ function startGame({ name, mode, clan }) {
     state.selfId = msg.selfId;
     state.world = msg.world;
     canvas.focus();
+    showDiag(""); // clear any previous diag
   });
   net.on("snapshot", (msg) => renderer.applySnapshot(msg));
   net.on("leaderboard", (msg) => renderer.applyLeaderboard(msg.rows));
@@ -72,6 +88,10 @@ function startGame({ name, mode, clan }) {
     hudEl.hidden = false;
     leaderboardEl.hidden = false;
     minimapEl.hidden = false;
+    showDiag("");
+  });
+  net.on("error", (e) => {
+    showDiag(`WebSocket error: ${e?.message || e || "unknown"}`);
   });
   net.on("close", () => {
     menu.hidden = false;
@@ -79,11 +99,18 @@ function startGame({ name, mode, clan }) {
     leaderboardEl.hidden = true;
     minimapEl.hidden = true;
     deathEl.hidden = true;
+    showDiag("Disconnected from server (WebSocket closed).");
   });
 
-  net.connect();
-  renderer.start();
-  input.start();
+  try {
+    net.connect();
+  } catch (e) {
+    showDiag(`connect() threw: ${e.message}`);
+    throw e;
+  }
+  try { renderer.start(); } catch (e) { showDiag(`renderer error: ${e.message}`); throw e; }
+  try { input.start();    } catch (e) { showDiag(`input error: ${e.message}`); throw e; }
+  showDiag("Connecting…");
 }
 
 // Update HUD at ~10 Hz

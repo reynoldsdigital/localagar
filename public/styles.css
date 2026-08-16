@@ -264,3 +264,25 @@ noscript {
   color: var(--danger);
   font-weight: 700;
 }
+
+/* ---- On-page diagnostics (shown by main.js on errors) ---- */
+#diag {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  max-width: 90vw;
+  padding: 10px 16px;
+  background: rgba(255, 107, 107, 0.15);
+  border: 1px solid rgba(255, 107, 107, 0.5);
+  color: var(--fg);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: none;
+  z-index: 50;
+}
+#diag.show { display: block; }
