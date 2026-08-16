@@ -30,6 +30,25 @@ Then open **http://localhost:3000** in one or more browser tabs (or different ma
 
 To change the port: `PORT=8080 npm start`
 
+### Accessing from your Tailscale tailnet
+
+If you have [Tailscale](https://tailscale.com/) installed, the server binds to `0.0.0.0` so it's reachable from any interface — including Tailscale. The startup banner prints the URL to use from other tailnet devices:
+
+```
+[localagar] listening on 0.0.0.0:3000
+  local      http://localhost:3000
+  tailscale  http://100.x.x.x:3000    (use this from other tailnet devices)
+  lan        http://<lan-ip>:3000     (any interface)
+```
+
+To restrict the server to *only* the Tailscale interface (so the LAN can't see it), start it with the Tailscale IP explicitly:
+
+```bash
+HOST=$(tailscale ip -4) npm start
+```
+
+If you have MagicDNS enabled on your tailnet, you can also use the hostname (e.g. `http://mr:3000`) instead of the IP.
+
 ## Controls
 
 | Action            | Key       |

@@ -3,6 +3,7 @@
 import http from "node:http";
 import path from "node:path";
 import fs from "node:fs";
+import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
@@ -16,6 +17,10 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
+
+// HOST controls what we bind to (default: all interfaces, so localhost + LAN
+// + Tailscale all work). The startup banner separately auto-detects Tailscale
+// and prints the tailnet URL.
 const HOST = process.env.HOST || "0.0.0.0";
 
 const MIME = {
@@ -161,7 +166,13 @@ wss.on("connection", (ws, req) => {
 });
 
 httpServer.listen(PORT, HOST, () => {
-  console.log(`[localagar] http://localhost:${PORT}  (ws: /ws)`);
+  const tailIP = (() => { try { return execSync("tailscale ip -4 2>/dev/null", { encoding: "utf8", timeout: 1000 }).trim().split(/\s+/)[0] || null; } catch { return null; } })();
+  const lines = [];
+  lines.push(`[localagar] listening on ${HOST}:${PORT}`);
+  lines.push(`  local      http://localhost:${PORT}`);
+  if (tailIP) lines.push(`  tailscale  http://${tailIP}:${PORT}    (use this from other tailnet devices)`);
+  if (HOST === "0.0.0.0") lines.push(`  lan        http://<lan-ip>:${PORT}        (any interface)`);
+  console.log(lines.join("\n"));
 });
 
 process.on("SIGINT", () => {
