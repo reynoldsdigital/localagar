@@ -12,6 +12,10 @@
 }
 
 * { box-sizing: border-box; }
+/* The HTML `hidden` attribute should always win, even over our explicit
+   display: flex / grid rules. This is the single most common cause of
+   "menu won't go away" bugs in CSS. */
+[hidden] { display: none !important; }
 html, body {
   margin: 0;
   padding: 0;
@@ -171,7 +175,9 @@ html, body {
     var(--bg);
   padding: 24px;
   gap: 8px;
+  z-index: 10;
 }
+#menu[hidden] { display: none; }
 #menu .title {
   margin: 0;
   font-size: clamp(36px, 7vw, 64px);
