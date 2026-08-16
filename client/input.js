@@ -1,14 +1,15 @@
 // Captures mouse + keyboard and sends them to the server via Net.
+// The Input handler needs to know the current camera (cx, cy, zoom) so it
+// can convert mouse-pixel coordinates to world coordinates. It pulls camera
+// state from the Renderer on every mousemove so the two stay in sync.
 
 export class Input {
-  constructor(canvas, net) {
+  constructor(canvas, net, renderer) {
     this.canvas = canvas;
     this.net = net;
+    this.renderer = renderer; // may be null until renderer is created
     this.mouseX = 0;
     this.mouseY = 0;
-    this.cameraX = 0;
-    this.cameraY = 0;
-    this.zoom = 1;
     this._running = false;
     this._handlers = [];
   }
@@ -19,8 +20,16 @@ export class Input {
       const r = c.getBoundingClientRect();
       this.mouseX = e.clientX - r.left;
       this.mouseY = e.clientY - r.top;
-      const wx = (this.mouseX - r.width / 2) / this.zoom + this.cameraX;
-      const wy = (this.mouseY - r.height / 2) / this.zoom + this.cameraY;
+      // Read camera state from the renderer so input follows the view.
+      const cam = this.renderer?.camera;
+      const camX = cam ? cam.x : 0;
+      const camY = cam ? cam.y : 0;
+      const zoom = cam ? cam.zoom : 1;
+      // Mouse pixel -> world coordinates. The world is centered on the
+      // viewport, so we subtract the viewport center, divide by zoom, and
+      // add the camera position.
+      const wx = (this.mouseX - r.width / 2) / zoom + camX;
+      const wy = (this.mouseY - r.height / 2) / zoom + camY;
       this.net.sendInput(wx, wy);
     };
     const onDown = (e) => {
@@ -54,9 +63,7 @@ export class Input {
     this._handlers = [];
     this._running = false;
   }
-  setCamera(cx, cy, zoom) {
-    this.cameraX = cx;
-    this.cameraY = cy;
-    this.zoom = zoom;
+  setRenderer(r) {
+    this.renderer = r;
   }
 }

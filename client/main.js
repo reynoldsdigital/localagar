@@ -84,8 +84,8 @@ function startGame({ name, mode, clan }) {
   modeEl.textContent = mode === "event" ? "Etkinlik" : mode.toUpperCase();
 
   net = new Net();
-  input = new Input(canvas, net);
   renderer = new Renderer(canvas, minimapCanvas);
+  input = new Input(canvas, net, renderer);
 
   net.on("welcome", (msg) => {
     console.log("[main] welcome received", msg);
