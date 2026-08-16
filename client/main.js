@@ -88,25 +88,30 @@ function startGame({ name, mode, clan }) {
   renderer = new Renderer(canvas, minimapCanvas);
 
   net.on("welcome", (msg) => {
+    console.log("[main] welcome received", msg);
     state.selfId = msg.selfId;
     state.world = msg.world;
     canvas.focus();
-    hideDiag();
+    showDiag("Connected", `selfId=${msg.selfId} world=${msg.world.WIDTH}x${msg.world.HEIGHT}`);
+    setTimeout(() => hideDiag(), 800);
   });
   net.on("snapshot", (msg) => renderer.applySnapshot(msg));
   net.on("leaderboard", (msg) => renderer.applyLeaderboard(msg.rows));
   net.on("open", () => {
+    console.log("[main] ws open, sending join");
     net.join({ name, mode, clan });
     menu.hidden = true;
     hudEl.hidden = false;
     leaderboardEl.hidden = false;
     minimapEl.hidden = false;
-    showDiag("Connecting to game…");
+    showDiag("Connecting to game…", "WebSocket open, waiting for welcome…");
   });
   net.on("error", (e) => {
+    console.warn("[main] ws error", e);
     showDiag("WebSocket error", (e && e.message) || String(e) || "unknown");
   });
   net.on("close", (e) => {
+    console.warn("[main] ws close", e);
     menu.hidden = false;
     hudEl.hidden = true;
     leaderboardEl.hidden = true;
