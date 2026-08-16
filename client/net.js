@@ -1,6 +1,9 @@
-// WebSocket client with a 6s open timeout. The hang we saw in some browsers
-// (Chrome + Tailscale, corporate proxies) was a silent WS that never fired
-// open or close — the timeout surfaces that as a clear diagnostic.
+// WebSocket client with:
+//   - 6s open timeout so silent hangs surface as a clear diagnostic
+//   - send queue: messages sent before the socket is fully open (or while
+//     reconnecting) are queued and flushed on open, fixing a known
+//     Safari/iOS quirk where onopen fires before readyState reaches OPEN.
+//   - JSON-safe message dispatch via _emit(m.t, m).
 
 export class Net {
   constructor() {
@@ -11,6 +14,8 @@ export class Net {
     this._inputThrottleMs = 1000 / 30;
     this._timeoutMs = 6000;
     this._lastURL = null;
+    this._sendQueue = [];
+    this._opened = false;
   }
   on(evt, fn) {
     (this._listeners[evt] = this._listeners[evt] || []).push(fn);
@@ -38,6 +43,7 @@ export class Net {
       return;
     }
     this.ws = ws;
+    this._opened = false;
 
     let settled = false;
     const settle = (kind, payload) => {
@@ -52,35 +58,68 @@ export class Net {
         try { ws.close(); } catch (_) {}
         settle("error", {
           message: `WebSocket open timed out after ${this._timeoutMs}ms (URL: ${url}).\n\n` +
-                   `This usually means a proxy / firewall / Chrome extension is silently dropping the WebSocket upgrade.\n\n` +
+                   `This usually means a proxy / firewall / browser extension is silently dropping the WebSocket upgrade.\n\n` +
                    `Try these in order:\n` +
-                   `  1. Hard reload: Ctrl+Shift+R  (clear the cached version)\n` +
-                   `  2. Try the LAN IP instead: http://<lan-ip>:3000\n` +
-                   `  3. Open DevTools (F12) -> Network -> WS and check what happens to the ws:// request\n` +
-                   `  4. Disable any VPN/proxy/extension that might block WS`,
+                   `  1. Hard reload: Ctrl+Shift+R\n` +
+                   `  2. Try a different URL (Tailscale IP, LAN IP, or localhost)\n` +
+                   `  3. Open DevTools (F12) -> Network -> WS and check the handshake`,
         });
       }
     }, this._timeoutMs);
 
-    ws.onopen = () => { console.log("[net] open"); settle("open"); };
-    ws.onclose = (e) => { console.log("[net] close", e?.code, e?.reason); settle("close", e); };
+    ws.onopen = () => {
+      console.log("[net] open, readyState=", ws.readyState);
+      this._opened = true;
+      // Flush anything queued before open
+      const q = this._sendQueue;
+      this._sendQueue = [];
+      for (const m of q) {
+        try { ws.send(JSON.stringify(m)); } catch (e) { console.warn("[net] queue flush failed", e); }
+      }
+      settle("open");
+    };
+    ws.onclose = (e) => {
+      console.log("[net] close", e?.code, e?.reason);
+      this._opened = false;
+      settle("close", e);
+    };
     ws.onerror = (e) => {
       console.warn("[net] error", e);
-      // Browsers give almost no detail on WS errors for security reasons.
       settle("error", {
         message: `WebSocket failed to connect to ${url}.\n` +
                  `Open DevTools -> Network -> WS to see the failed handshake.\n` +
-                 `Common causes: proxy / firewall dropping Upgrade header, Chrome extension blocking WS, DNS routing the WS somewhere unexpected.`,
+                 `Common causes: proxy / firewall dropping Upgrade header, browser extension blocking WS, DNS misroute.`,
       });
     };
     ws.onmessage = (e) => {
-      let m; try { m = JSON.parse(e.data); } catch { return; }
-      this._emit(m.t, m);
+      // Safari/iOS sometimes delivers Blob/ArrayBuffer — coerce to string
+      let data = e.data;
+      if (data && typeof data !== "string") {
+        if (data instanceof Blob) {
+          data.text().then(s => this._handleFrame(s)).catch(err => console.warn("[net] blob read", err));
+          return;
+        }
+        if (data instanceof ArrayBuffer) {
+          try { data = new TextDecoder().decode(new Uint8Array(data)); } catch { return; }
+        }
+      }
+      this._handleFrame(data);
     };
   }
+  _handleFrame(data) {
+    if (typeof data !== "string") return;
+    let m; try { m = JSON.parse(data); } catch (e) { console.warn("[net] bad json", data); return; }
+    if (!m || typeof m.t !== "string") return;
+    this._emit(m.t, m);
+  }
   send(msg) {
-    if (!this.ws || this.ws.readyState !== 1) return;
-    this.ws.send(JSON.stringify(msg));
+    // If the socket isn't open yet, queue the message and flush on open.
+    if (!this.ws || this.ws.readyState !== 1) {
+      this._sendQueue.push(msg);
+      return;
+    }
+    try { this.ws.send(JSON.stringify(msg)); }
+    catch (e) { console.warn("[net] send failed", e); }
   }
   join({ name, mode, clan }) {
     this.send({ t: "join", name, mode, clan });
