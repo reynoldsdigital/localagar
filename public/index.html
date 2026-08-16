@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>LocalAgar — agarz.com clone</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <canvas id="game" tabindex="0"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" hidden>
+    <div id="score-pill">
+      <span id="score">0</span>
+      <span id="rank">#1</span>
+    </div>
+    <div id="gold-pill">
+      <span class="coin">$</span><span id="gold">0</span>
+    </div>
+    <div id="mode-pill"><span id="mode-label">FFA</span></div>
+    <div id="help-pill">
+      <small>Space:split</small>
+      <small>W/E:eject</small>
+      <small>Z/X:macro</small>
+      <small>A/S:gold</small>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <aside id="leaderboard" hidden>
+    <h3>Leaderboard</h3>
+    <ol id="leader-rows"></ol>
+  </aside>
+
+  <!-- Minimap -->
+  <div id="minimap" hidden>
+    <canvas id="minimap-canvas" width="180" height="180"></canvas>
+  </div>
+
+  <!-- Death overlay -->
+  <div id="death" hidden>
+    <div class="card">
+      <h2>You were eaten!</h2>
+      <p>Respawning in <span id="death-count">3</span>…</p>
+    </div>
+  </div>
+
+  <!-- Main menu -->
+  <main id="menu">
+    <h1 class="title">Local<span class="accent">Agar</span></h1>
+    <p class="subtitle">A local agarz.com-style multiplayer game</p>
+
+    <form id="join-form" autocomplete="off">
+      <label>
+        <span>Name</span>
+        <input id="name-input" type="text" maxlength="20" placeholder="Player" value="Player">
+      </label>
+      <fieldset id="mode-fieldset">
+        <legend>Game mode</legend>
+        <label class="mode"><input type="radio" name="mode" value="ffa" checked> <b>FFA</b> <small>free-for-all</small></label>
+        <label class="mode"><input type="radio" name="mode" value="cffa"> <b>CFFA</b> <small>clan team play</small></label>
+        <label class="mode"><input type="radio" name="mode" value="event"> <b>Etkinlik</b> <small>event (fast growth)</small></label>
+      </fieldset>
+      <fieldset id="clan-fieldset" hidden>
+        <legend>Clan</legend>
+        <label class="mode"><input type="radio" name="clan" value="RED" checked> <b>RED</b></label>
+        <label class="mode"><input type="radio" name="clan" value="BLU"> <b>BLU</b></label>
+        <label class="mode"><input type="radio" name="clan" value="GRN"> <b>GRN</b></label>
+        <label class="mode"><input type="radio" name="clan" value="YEL"> <b>YEL</b></label>
+        <label class="mode"><input type="radio" name="clan" value="PRP"> <b>PRP</b></label>
+        <label class="mode"><input type="radio" name="clan" value="ORG"> <b>ORG</b></label>
+        <label class="mode"><input type="radio" name="clan" value="CYN"> <b>CYN</b></label>
+        <label class="mode"><input type="radio" name="clan" value="MAG"> <b>MAG</b></label>
+      </fieldset>
+      <button id="play-btn" type="submit">Play</button>
+    </form>
+
+    <details class="howto">
+      <summary>How to play</summary>
+      <ul>
+        <li>Move with the mouse</li>
+        <li><b>Space</b> — split into two cells</li>
+        <li><b>W</b> / <b>E</b> — eject mass (W away, E toward mouse)</li>
+        <li><b>Z</b> — macro split, <b>X</b> — macro feed</li>
+        <li><b>A</b> / <b>S</b> — spend gold to gain mass (need gold first)</li>
+        <li>Eat pellets and smaller players to grow</li>
+        <li>Avoid viruses (green spiked circles) — they'll split you if you're big</li>
+      </ul>
+    </details>
+  </main>
+
+  <noscript>This game requires JavaScript and WebSockets.</noscript>
+
+  <script type="module" src="/client/main.js"></script>
+</body>
+</html>
