@@ -94,7 +94,11 @@ export class Room {
 
   _tick() {
     const now = Date.now();
-    const dt = (now - this.lastTickAt) / 1000 * (TICK_RATE / 30); // ~1 tick unit
+    // dt is expressed in "tick units" — 1.0 means one full 33ms tick has
+    // elapsed. Capped at 2 so a slow tick doesn't catapult cells across the
+    // world. Without this cap, drops in the event loop would apply huge
+    // distances per tick.
+    const dt = Math.min(2, (now - this.lastTickAt) / 1000 * TICK_RATE);
     this.lastTickAt = now;
 
     // Maintain bot count (in case real players drop and free slots)
