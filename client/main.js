@@ -24,16 +24,29 @@ const diagEl = document.getElementById("diag");
 
 // Visible diagnostics so connection / module errors surface even without DevTools.
 window.addEventListener("error", (e) => {
-  showDiag(`JS error: ${e.message}\n${e.filename || ""}:${e.lineno || ""}`);
+  showDiag("JS error", `${e.message}\n${e.filename || ""}:${e.lineno || ""}:${e.colno || ""}`);
 });
 window.addEventListener("unhandledrejection", (e) => {
-  showDiag(`Promise error: ${e.reason?.message || e.reason}`);
+  const r = e.reason;
+  showDiag("Unhandled error", (r && r.message) ? `${r.message}\n${r.stack || ""}` : String(r));
 });
-function showDiag(msg) {
+function showDiag(title, body) {
   if (!diagEl) return;
-  diagEl.textContent = String(msg);
+  // Allow call style: showDiag("string") or showDiag("Title", "Body")
+  let t, b;
+  if (arguments.length === 1) { t = "Status"; b = title; }
+  else { t = title; b = body || ""; }
+  diagEl.innerHTML = "";
+  const head = document.createElement("strong");
+  head.textContent = t;
+  diagEl.appendChild(head);
+  const pre = document.createElement("pre");
+  pre.style.margin = "0";
+  pre.style.whiteSpace = "pre-wrap";
+  pre.textContent = b;
+  diagEl.appendChild(pre);
   diagEl.classList.add("show");
-  console.warn("[localagar diag]", msg);
+  console.warn(`[localagar diag] ${t}: ${b}`);
 }
 
 let state = {
@@ -78,7 +91,7 @@ function startGame({ name, mode, clan }) {
     state.selfId = msg.selfId;
     state.world = msg.world;
     canvas.focus();
-    showDiag(""); // clear any previous diag
+    hideDiag();
   });
   net.on("snapshot", (msg) => renderer.applySnapshot(msg));
   net.on("leaderboard", (msg) => renderer.applyLeaderboard(msg.rows));
@@ -88,29 +101,38 @@ function startGame({ name, mode, clan }) {
     hudEl.hidden = false;
     leaderboardEl.hidden = false;
     minimapEl.hidden = false;
-    showDiag("");
+    showDiag("Connecting to game…");
   });
   net.on("error", (e) => {
-    showDiag(`WebSocket error: ${e?.message || e || "unknown"}`);
+    showDiag("WebSocket error", (e && e.message) || String(e) || "unknown");
   });
-  net.on("close", () => {
+  net.on("close", (e) => {
     menu.hidden = false;
     hudEl.hidden = true;
     leaderboardEl.hidden = true;
     minimapEl.hidden = true;
     deathEl.hidden = true;
-    showDiag("Disconnected from server (WebSocket closed).");
+    showDiag("Disconnected from server",
+      `The WebSocket connection was closed.\n` +
+      `Code: ${e?.code ?? "?"}\n` +
+      `Reason: ${e?.reason || "(none)"}\n` +
+      `Was clean: ${e?.wasClean ?? "?"}\n` +
+      `URL tried: ${location.protocol === "https:" ? "wss://" : "ws://"}${location.host}/ws`);
   });
 
   try {
     net.connect();
   } catch (e) {
-    showDiag(`connect() threw: ${e.message}`);
+    showDiag("connect() threw", e.message || String(e));
     throw e;
   }
-  try { renderer.start(); } catch (e) { showDiag(`renderer error: ${e.message}`); throw e; }
-  try { input.start();    } catch (e) { showDiag(`input error: ${e.message}`); throw e; }
-  showDiag("Connecting…");
+  try { renderer.start(); } catch (e) { showDiag("renderer error", e.message || String(e)); throw e; }
+  try { input.start();    } catch (e) { showDiag("input error", e.message || String(e)); throw e; }
+}
+
+function hideDiag() {
+  if (!diagEl) return;
+  diagEl.classList.remove("show");
 }
 
 // Update HUD at ~10 Hz
