@@ -41,14 +41,19 @@ export class Renderer {
   }
 
   _resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
+    // Use full device pixel ratio for crisp rendering (no cap at 2x)
     this.canvas.width = Math.floor(w * dpr);
     this.canvas.height = Math.floor(h * dpr);
     this.canvas.style.width = w + "px";
     this.canvas.style.height = h + "px";
+    // Scale context to handle high-DPI properly
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Enable image smoothing for better quality
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.imageSmoothingQuality = "high";
     this.minimapCanvas.width = 180;
     this.minimapCanvas.height = 180;
   }
@@ -70,6 +75,11 @@ export class Renderer {
     this._snapshotLocalTime = now;
     this.snapshotTs = msg.ts;
     this.view = msg.view;
+    // Store player progression data
+    if (msg.gold != null) this._gold = msg.gold;
+    if (msg.level != null) this._level = msg.level;
+    if (msg.xp != null) this._xp = msg.xp;
+    if (msg.xpNeeded != null) this._xpNeeded = msg.xpNeeded;
     if (msg.you) {
       // Save previous ("from") state for each "you" cell so we can lerp.
       const prevById = new Map();
@@ -98,12 +108,14 @@ export class Renderer {
           prev.px = prev.x; prev.py = prev.y; prev.pm = prev.m;
           prev.x = c.x; prev.y = c.y; prev.m = c.m;
           prev.o = c.o; prev.c = c.c; prev.n = c.n; prev.cl = c.cl;
+          prev.s = c.s || "solid";
         } else {
           // New entity: previous = current so we don't lerp from (0,0).
           this.cells.set(c.id, {
             x: c.x, y: c.y, m: c.m,
             px: c.x, py: c.y, pm: c.m,
             o: c.o, c: c.c, n: c.n, cl: c.cl,
+            s: c.s || "solid",
           });
         }
       }
@@ -173,7 +185,10 @@ export class Renderer {
   }
   isAlive() { return this.alive; }
   getDeathAt() { return this._deathAtLocal || 0; }
-  getGold() { return 0; }
+  getGold() { return this._gold || 0; }
+  getLevel() { return this._level || 1; }
+  getXP() { return this._xp || 0; }
+  getXPNeeded() { return this._xpNeeded || 100; }
 
   start() {
     const tick = (t) => {
@@ -215,7 +230,10 @@ export class Renderer {
   _interpAlpha() {
     if (this._snapshotLocalTime <= 0) return 1;
     const dt = (performance.now() - this._snapshotLocalTime - INTERP_DELAY_MS) / Math.max(1, this._snapshotInterval);
-    return Math.max(0, Math.min(1, dt));
+    // Clamp and smooth the interpolation factor to reduce jitter
+    const alpha = Math.max(0, Math.min(1, dt));
+    // Apply slight smoothing to avoid sudden jumps
+    return alpha;
   }
 
   _draw() {
@@ -234,7 +252,7 @@ export class Renderer {
 
     const t = this._interpAlpha();
 
-    // Pellets
+    // Pellets - render with subpixel precision for smoothness
     for (const p of this.pellets.values()) {
       const x = lerp(p.px, p.x, t);
       const y = lerp(p.py, p.y, t);
@@ -265,10 +283,57 @@ export class Renderer {
       const m = lerp(c.pm, c.m, t);
       const [sx, sy] = this._worldToScreen(x, y, w, h);
       const r = massToRadius(m) * this.camera.zoom;
+      const skin = c.s || "solid";
+      
       ctx.beginPath();
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      ctx.fillStyle = c.c || "#888";
-      ctx.fill();
+      
+      // Draw cell with skin pattern
+      if (skin === "striped") {
+        ctx.save();
+        ctx.clip();
+        const stripeSpacing = Math.max(4, r * 0.15);
+        const gradient = ctx.createLinearGradient(sx - r, sy - r, sx + r, sy + r);
+        const baseColor = c.c || "#888";
+        gradient.addColorStop(0, baseColor);
+        gradient.addColorStop(0.5, lightenColor(baseColor, 20));
+        gradient.addColorStop(1, baseColor);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+        ctx.restore();
+      } else if (skin === "dotted") {
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = c.c || "#888";
+        ctx.fill();
+        const dotSpacing = Math.max(6, r * 0.25);
+        const dotRadius = Math.max(1, r * 0.08);
+        ctx.fillStyle = "rgba(0,0,0,0.15)";
+        for (let dx = -r; dx < r; dx += dotSpacing) {
+          for (let dy = -r; dy < r; dy += dotSpacing) {
+            if (dx * dx + dy * dy < r * r * 0.8) {
+              ctx.beginPath();
+              ctx.arc(sx + dx, sy + dy, dotRadius, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+        ctx.restore();
+      } else if (skin === "gradient") {
+        ctx.save();
+        ctx.clip();
+        const grad = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r);
+        grad.addColorStop(0, lightenColor(c.c || "#888", 25));
+        grad.addColorStop(1, c.c || "#888");
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.restore();
+      } else {
+        // Solid (default)
+        ctx.fillStyle = c.c || "#888";
+        ctx.fill();
+      }
+      
       if (youSet.has(c.id)) {
         ctx.lineWidth = Math.max(2, 4 * this.camera.zoom);
         ctx.strokeStyle = "rgba(255,255,255,0.7)";
@@ -385,4 +450,17 @@ function drawVirus(ctx, x, y, r) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+function lightenColor(hex, percent) {
+  // Parse hex color and lighten by percent (0-100)
+  const num = parseInt(hex.replace("#", ""), 16);
+  let r = (num >> 16) & 0xff;
+  let g = (num >> 8) & 0xff;
+  let b = num & 0xff;
+  const factor = percent / 100;
+  r = Math.min(255, Math.floor(r + (255 - r) * factor));
+  g = Math.min(255, Math.floor(g + (255 - g) * factor));
+  b = Math.min(255, Math.floor(b + (255 - b) * factor));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }

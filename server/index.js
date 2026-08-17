@@ -9,8 +9,9 @@ import { WebSocketServer } from "ws";
 
 import { server } from "./server.js";
 import { Player } from "./player.js";
+import { Pellet } from "./pellet.js";
 import { S2C, C2S } from "./protocol.js";
-import { MODES, MODE_CONFIG } from "../shared/constants.js";
+import { MODES, MODE_CONFIG, CELL } from "../shared/constants.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,11 +112,15 @@ wss.on("connection", (ws, req) => {
       case "join": {
         const mode = (msg.mode in MODE_CONFIG) ? msg.mode : MODES.FFA;
         const clan = mode === MODES.CFFA ? (typeof msg.clan === "string" ? msg.clan : null) : null;
+        const skin = typeof msg.skin === "string" ? msg.skin.slice(0, 16) : "solid";
+        const color = typeof msg.color === "string" && /^#[0-9a-fA-F]{6}$/.test(msg.color) ? msg.color : null;
         player = new Player({
           id: `p_${Math.random().toString(36).slice(2, 10)}`,
           name: (msg.name || "Player").toString().slice(0, 24),
           mode,
           clan,
+          skin,
+          color,
         });
         room = server.joinPlayer(player);
         room._conns.set(player.id, ws);
@@ -157,6 +162,29 @@ wss.on("connection", (ws, req) => {
       case "gold": {
         if (!player || !room) return;
         if (msg.key === "a" || msg.key === "s") room.spendGold(player, msg.key);
+        break;
+      }
+      case "respawn": {
+        if (!player || !room) return;
+        // Immediate respawn: kill current cells and spawn fresh
+        if (player.alive) {
+          // Convert current cells to pellets
+          for (const c of player.cells) {
+            const n = Math.min(20, Math.floor(c.mass / 12));
+            for (let i = 0; i < n; i++) {
+              const a = Math.random() * Math.PI * 2;
+              const r = Math.random() * c.radius;
+              const pelletX = Math.max(0, Math.min(room.world.WIDTH, c.x + Math.cos(a) * r));
+              const pelletY = Math.max(0, Math.min(room.world.HEIGHT, c.y + Math.sin(a) * r));
+              room.pellets.push(new Pellet(pelletX, pelletY, 12, true, player.id));
+            }
+          }
+          player.cells = [];
+          player.alive = false;
+        }
+        // Spawn fresh
+        player.alive = true;
+        player.spawnInto(room.world, CELL.START_MASS);
         break;
       }
       case "pong": {

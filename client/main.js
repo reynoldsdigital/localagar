@@ -10,17 +10,57 @@ const hudEl = document.getElementById("hud");
 const leaderboardEl = document.getElementById("leaderboard");
 const minimapEl = document.getElementById("minimap");
 const deathEl = document.getElementById("death");
+const pauseMenuEl = document.getElementById("pause-menu");
+const respawnBtn = document.getElementById("respawn-btn");
+const resumePauseBtn = document.getElementById("resume-pause-btn");
+const menuPauseBtn = document.getElementById("menu-pause-btn");
 const deathCountEl = document.getElementById("death-count");
 const scoreEl = document.getElementById("score");
 const rankEl = document.getElementById("rank");
 const goldEl = document.getElementById("gold");
+const levelEl = document.getElementById("level");
+const xpFillEl = document.getElementById("xp-fill");
 const modeEl = document.getElementById("mode-label");
 const leaderRowsEl = document.getElementById("leader-rows");
 const minimapCanvas = document.getElementById("minimap-canvas");
 const form = document.getElementById("join-form");
 const clanFieldset = document.getElementById("clan-fieldset");
 const modeFieldset = document.getElementById("mode-fieldset");
+const colorSwatchesEl = document.getElementById("color-swatches");
+const customColorInput = document.getElementById("custom-color-input");
+const skinFieldset = document.getElementById("skin-fieldset");
 const diagEl = document.getElementById("diag");
+
+// --- Color picker: update skin previews in real time ---
+function getSelectedColor() {
+  // Check if custom color input was recently changed (takes priority
+  // when the user interacted with it). Otherwise use the checked swatch.
+  const checkedSwatch = colorSwatchesEl.querySelector('input[name="color"]:checked');
+  if (checkedSwatch) return checkedSwatch.value;
+  return customColorInput.value || "#4ecdc4";
+}
+
+function updateSkinPreviewColors() {
+  const color = getSelectedColor();
+  skinFieldset.style.setProperty("--cell-color", color);
+}
+
+// Update previews whenever a color swatch or custom color changes
+for (const input of colorSwatchesEl.querySelectorAll('input[name="color"]')) {
+  input.addEventListener("change", () => {
+    // Sync custom color input to match swatch
+    customColorInput.value = getSelectedColor();
+    updateSkinPreviewColors();
+  });
+}
+customColorInput.addEventListener("input", () => {
+  // Deselect swatches when using custom picker
+  const checked = colorSwatchesEl.querySelector('input[name="color"]:checked');
+  if (checked) checked.checked = false;
+  updateSkinPreviewColors();
+});
+// Set initial preview color
+updateSkinPreviewColors();
 
 // Visible diagnostics so connection / module errors surface even without DevTools.
 window.addEventListener("error", (e) => {
@@ -57,9 +97,61 @@ let state = {
   score: 0,
   rank: 0,
   gold: 0,
+  level: 1,
+  xp: 0,
+  xpNeeded: 100,
+  paused: false,
 };
 
 let net, input, renderer;
+
+// ---------------------------------------------------------------------------
+// Pause-menu button handlers — registered ONCE, outside startGame() so they
+// are not duplicated on rejoin.
+// ---------------------------------------------------------------------------
+
+// ESC toggles the pause menu (only while in-game, not on the main menu).
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!menu.hidden) return;            // don't pause from the main menu
+  if (!net) return;                    // not in a game yet
+  state.paused = !state.paused;
+  pauseMenuEl.hidden = !state.paused;
+});
+
+// Resume — just hides the pause overlay.
+resumePauseBtn.addEventListener("click", () => {
+  state.paused = false;
+  pauseMenuEl.hidden = true;
+});
+
+// Respawn — tell the server to kill current cells and spawn fresh.
+respawnBtn.addEventListener("click", () => {
+  if (net) {
+    net.respawn();
+  }
+  state.paused = false;
+  pauseMenuEl.hidden = true;
+});
+
+// Exit to menu — disconnect and return to the main menu.
+menuPauseBtn.addEventListener("click", () => {
+  if (net && net.ws) {
+    try { net.ws.close(); } catch (_) {}
+  }
+  menu.hidden = false;
+  hudEl.hidden = true;
+  leaderboardEl.hidden = true;
+  minimapEl.hidden = true;
+  pauseMenuEl.hidden = true;
+  deathEl.hidden = true;
+  state.paused = false;
+  if (input) input.stop();
+});
+
+// ---------------------------------------------------------------------------
+// Main menu / join form
+// ---------------------------------------------------------------------------
 
 // Show/hide clan picker based on mode
 for (const r of modeFieldset.querySelectorAll('input[type="radio"]')) {
@@ -73,14 +165,19 @@ form.addEventListener("submit", (e) => {
   e.preventDefault();
   const name = (document.getElementById("name-input").value || "Player").trim();
   const mode = modeFieldset.querySelector('input[name="mode"]:checked').value;
+  const skin = document.querySelector('input[name="skin"]:checked')?.value || "solid";
+  const color = getSelectedColor();
   const clan = mode === "cffa"
     ? document.querySelector('input[name="clan"]:checked')?.value || "RED"
     : null;
-  startGame({ name, mode, clan });
+  startGame({ name, mode, clan, skin, color });
 });
 
-function startGame({ name, mode, clan }) {
+function startGame({ name, mode, clan, skin, color }) {
   state.mode = mode;
+  state.skin = skin;
+  state.paused = false;
+  pauseMenuEl.hidden = true;
   modeEl.textContent = mode === "event" ? "Etkinlik" : mode.toUpperCase();
 
   net = new Net();
@@ -99,7 +196,7 @@ function startGame({ name, mode, clan }) {
   net.on("leaderboard", (msg) => renderer.applyLeaderboard(msg.rows));
   net.on("open", () => {
     console.log("[main] ws open, sending join");
-    net.join({ name, mode, clan });
+    net.join({ name, mode, clan, skin, color });
     menu.hidden = true;
     hudEl.hidden = false;
     leaderboardEl.hidden = false;
@@ -117,6 +214,8 @@ function startGame({ name, mode, clan }) {
     leaderboardEl.hidden = true;
     minimapEl.hidden = true;
     deathEl.hidden = true;
+    pauseMenuEl.hidden = true;
+    state.paused = false;
     showDiag("Disconnected from server",
       `The WebSocket connection was closed.\n` +
       `Code: ${e?.code ?? "?"}\n` +
@@ -147,9 +246,18 @@ setInterval(() => {
   state.rank = renderer.getRank();
   state.alive = renderer.isAlive();
   state.gold = renderer.getGold();
+  state.level = renderer.getLevel();
+  state.xp = renderer.getXP();
+  state.xpNeeded = renderer.getXPNeeded();
   scoreEl.textContent = Math.floor(state.score);
   rankEl.textContent = "#" + (state.rank || "—");
   goldEl.textContent = state.gold | 0;
+  levelEl.textContent = state.level | 1;
+  // Update XP bar
+  if (xpFillEl) {
+    const xpPct = state.xpNeeded > 0 ? (state.xp / state.xpNeeded) * 100 : 0;
+    xpFillEl.style.width = `${Math.min(100, xpPct)}%`;
+  }
   if (!state.alive) {
     deathEl.hidden = false;
     const remaining = Math.max(0, 1500 - (Date.now() - renderer.getDeathAt()));

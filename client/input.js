@@ -12,6 +12,9 @@ export class Input {
     this.mouseY = 0;
     this._running = false;
     this._handlers = [];
+    this._spaceHeld = false;
+    this._spaceHoldStart = 0;
+    this._lastSplitSent = 0;
   }
   start() {
     this._running = true;
@@ -36,30 +39,55 @@ export class Input {
       if (e.button === 0) this.net.split();
     };
     const onKey = (e) => {
-      if (e.repeat) return;
-      switch (e.key.toLowerCase()) {
-        case " ":
-        case "space":
-          e.preventDefault();
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        if (!e.repeat && !this._spaceHeld) {
+          this._spaceHeld = true;
+          this._spaceHoldStart = Date.now();
+          // Send initial split
           this.net.split();
-          break;
-        case "w": this.net.eject("w"); break;
-        case "e": this.net.eject("e"); break;
-        case "z": this.net.macro("z"); break;
-        case "x": this.net.macro("x"); break;
-        case "a": this.net.gold("a"); break;
-        case "s": this.net.gold("s"); break;
+          this._lastSplitSent = Date.now();
+        }
+        e.preventDefault();
+      } else if (e.repeat) {
+        return;
+      } else {
+        switch (e.key.toLowerCase()) {
+          case "w": this.net.eject("w"); break;
+          case "e": this.net.eject("e"); break;
+          case "a": this.net.gold("a"); break;
+          case "s": this.net.gold("s"); break;
+        }
+      }
+    };
+    const onKeyUp = (e) => {
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        this._spaceHeld = false;
       }
     };
     c.addEventListener("mousemove", onMove);
     c.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
     this._handlers.push(["mousemove", c, onMove]);
     this._handlers.push(["mousedown", c, onDown]);
     this._handlers.push(["keydown", window, onKey]);
+    this._handlers.push(["keyup", window, onKeyUp]);
+    
+    // Poll for held spacebar splits
+    this._holdInterval = setInterval(() => {
+      if (this._spaceHeld && this.net) {
+        const holdDuration = Date.now() - this._spaceHoldStart;
+        // Send additional splits while holding (every 150ms after initial)
+        if (holdDuration > 150 && Date.now() - this._lastSplitSent > 150) {
+          this.net.split();
+          this._lastSplitSent = Date.now();
+        }
+      }
+    }, 50);
   }
   stop() {
     for (const [type, target, fn] of this._handlers) target.removeEventListener(type, fn);
+    if (this._holdInterval) clearInterval(this._holdInterval);
     this._handlers = [];
     this._running = false;
   }

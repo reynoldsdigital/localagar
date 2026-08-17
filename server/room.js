@@ -2,14 +2,14 @@
 // and broadcasts snapshots to connected clients.
 
 import {
-  WORLD, TICK_RATE, CELL, PELLET, VIRUS, MODES, MODE_CONFIG, massToRadius,
+  WORLD, TICK_RATE, CELL, PELLET, VIRUS, MODES, MODE_CONFIG, massToRadius, GOLD,
 } from "../shared/constants.js";
 import { Cell, Player } from "./player.js";
 import { Pellet, spawnInitialPellets } from "./pellet.js";
 import { Virus, spawnViruses } from "./virus.js";
 import { SpatialGrid, distance, canEat } from "./collisions.js";
 import {
-  moveCell, decayCell, splitCell, mergeCells,
+  moveCell, decayCell, splitCell, mergeCells, separateCells,
 } from "./physics.js";
 import { S2C } from "./protocol.js";
 import { botThink, pickBotName } from "./bot.js";
@@ -126,15 +126,71 @@ export class Room {
       if (p.isBot) botThink(p, this);
     }
 
+    // Passive gold: every player (alive or dead, real or bot) earns gold
+    // over time just for being in the game.  Fractional gold is accumulated
+    // and converted to whole gold when it crosses 1.
+    const dtSec = dt / TICK_RATE;
+    const passiveGold = GOLD.PASSIVE_PER_SECOND * dtSec;
+    for (const p of this.players) {
+      if (p.isBot) continue;          // bots don't need gold
+      p.addFractionalGold(passiveGold);
+    }
+
     // Movement + decay
     for (const p of this.players) {
       if (!p.alive) continue;
+      
+      // First pass: clear auto-split flags
+      for (const c of p.cells) {
+        c._autoSplitThisTick = false;
+      }
+      
+      // Second pass: movement, decay, auto-split
       for (const c of p.cells) {
         moveCell(c, p, dt);
         decayCell(c, dt);
+
+        // Auto-split at 22500 mass (if under 16 cells) - only once per cell per tick
+        if (c.mass >= CELL.AUTO_SPLIT_MASS && p.cells.length < CELL.MAX_CELLS_PER_PLAYER && !c._autoSplitThisTick) {
+          const dx = c.vx || 1;
+          const dy = c.vy || 0;
+          const d = Math.hypot(dx, dy) || 1;
+          p.targetX = c.x + (dx / d) * 100;
+          p.targetY = c.y + (dy / d) * 100;
+          splitCell(c, p, this.cfg.splitSpeed, true);
+          c._autoSplitThisTick = true;
+        }
+        
+        // Hard cap at 30000 - trim excess mass
+        if (c.mass > CELL.HARD_MAX_SIZE) {
+          c.mass = CELL.HARD_MAX_SIZE;
+        }
       }
+      // Push same-owner cells apart while merge cooldown is active so
+      // split cells sit on the parent's outline (agar.io behaviour).
+      separateCells(p);
       mergeCells(p);
       p.recomputeScore();
+    }
+
+    // Move ejected pellets (they travel and then slow down)
+    for (const pellet of this.pellets) {
+      if (!pellet.ejected || !pellet.vx) continue;
+      pellet.x += pellet.vx * dt;
+      pellet.y += pellet.vy * dt;
+      // Drag/friction slows pellets down over time
+      pellet.vx *= 0.92;
+      pellet.vy *= 0.92;
+      // Stop when very slow
+      if (Math.hypot(pellet.vx, pellet.vy) < 0.5) {
+        pellet.vx = 0;
+        pellet.vy = 0;
+      }
+      // Clamp to world bounds
+      if (pellet.x < 0) { pellet.x = 0; pellet.vx = 0; }
+      if (pellet.y < 0) { pellet.y = 0; pellet.vy = 0; }
+      if (pellet.x > WORLD.WIDTH) { pellet.x = WORLD.WIDTH; pellet.vx = 0; }
+      if (pellet.y > WORLD.HEIGHT) { pellet.y = WORLD.HEIGHT; pellet.vy = 0; }
     }
 
     // Rebuild grid
@@ -161,6 +217,41 @@ export class Room {
           const dist = distance(c.x, c.y, other.x, other.y);
           if (dist < c.radius * 0.8) {
             c.mass += other.mass;
+            // Cap mass at maximum size limit
+            if (c.mass > CELL.MAX_SIZE) {
+              c.mass = CELL.MAX_SIZE;
+            }
+            // Award XP and gold for eating other players.
+            // Gold scales with the eaten player's mass — bigger prey = more
+            // gold.  Real players give 3x the gold rate of bots plus a flat
+            // bonus, so hunting players is far more rewarding than farming.
+            if (!other.owner.isBot && p.isBot === false) {
+              const xpGain = Math.floor(other.mass * 0.5);
+              const goldGain = Math.floor(other.mass * GOLD.EAT_PLAYER_MULTIPLIER) + GOLD.EAT_PLAYER_BONUS;
+              p.xp += xpGain;
+              p.gold += goldGain;
+              p.totalMassEaten += other.mass;
+              // Check for level up
+              const xpNeeded = p.level * 100;
+              if (p.xp >= xpNeeded) {
+                p.level++;
+                p.xp = 0;
+                p.gold += GOLD.LEVEL_UP_BONUS;
+              }
+            } else if (other.owner.isBot && !p.isBot) {
+              // Smaller rewards for eating bots
+              const xpGain = Math.floor(other.mass * 0.2);
+              const goldGain = Math.floor(other.mass * GOLD.EAT_BOT_MULTIPLIER);
+              p.xp += xpGain;
+              p.gold += goldGain;
+              p.totalMassEaten += other.mass;
+              const xpNeeded = p.level * 100;
+              if (p.xp >= xpNeeded) {
+                p.level++;
+                p.xp = 0;
+                p.gold += GOLD.LEVEL_UP_BONUS;
+              }
+            }
             other.owner.cells = other.owner.cells.filter(cc => cc !== other);
             if (other.owner.cells.length === 0) {
               other.owner.kill();
@@ -196,6 +287,10 @@ export class Room {
         const r = c.radius + pellet.radius * 0.6;
         if (distance(c.x, c.y, pellet.x, pellet.y) < r) {
           c.mass += pellet.mass;
+          // Cap mass at maximum size limit
+          if (c.mass > CELL.MAX_SIZE) {
+            c.mass = CELL.MAX_SIZE;
+          }
           pellet._dead = true;
           break;
         }
@@ -216,10 +311,28 @@ export class Room {
         if (!(c instanceof Cell)) continue;
         if (!c.owner.alive) continue;
         if (distance(c.x, c.y, v.x, v.y) < v.radius) {
+          // Check if player has reached max cells - can eat virus without splitting
+          if (c.owner.cells.length >= CELL.MAX_CELLS_PER_PLAYER) {
+            // Consume virus: gain +100 mass, no splitting
+            c.mass += CELL.VIRUS_MASS_GAIN;
+            // Cap at hard max
+            if (c.mass > CELL.HARD_MAX_SIZE) c.mass = CELL.HARD_MAX_SIZE;
+            // Virus consumed — relocate to a new spot (avoiding past positions)
+            v.relocate(WORLD.WIDTH, WORLD.HEIGHT);
+            v.resetAfterSplit();
+            continue;
+          }
+
           if (c.mass >= v.mass * VIRUS.SPLIT_THRESHOLD) {
-            // Split this cell as many times as possible
-            const max = Math.min(CELL.MAX_CELLS_PER_PLAYER, c.owner.cells.length + VIRUS.MAX_CHILDREN - 1);
-            let safety = 8;
+            // Check size milestone: must be >= 150 mass to pop virus
+            if (c.mass < CELL.MILESTONE_VIRUS_POP) {
+              continue; // Too small to be split by virus
+            }
+            // Pop into 8-16 pieces (virus pop)
+            const targetCells = CELL.VIRUS_POP_MIN_CELLS + 
+              Math.floor(Math.random() * (CELL.VIRUS_POP_MAX_CELLS - CELL.VIRUS_POP_MIN_CELLS + 1));
+            const max = Math.min(CELL.MAX_CELLS_PER_PLAYER, c.owner.cells.length + targetCells - 1);
+            let safety = 16;
             while (c.owner.cells.length < max && c.mass >= CELL.SPLIT_MIN_MASS && safety-- > 0) {
               // Aim split away from virus center
               const dx = c.x - v.x;
@@ -229,14 +342,26 @@ export class Room {
               c.owner.targetY = c.y + dy / d * 100;
               splitCell(c, c.owner, this.cfg.splitSpeed);
             }
-            // Bounce the virus a bit
-            const dx = c.x - v.x;
-            const dy = c.y - v.y;
-            const d = Math.hypot(dx, dy) || 1;
-            v.x -= (dx / d) * 20;
-            v.y -= (dy / d) * 20;
+            // Virus is consumed by the pop — relocate to a new spot
+            // (avoiding past positions so it never returns to the exact
+            // same spot more than once, like agar.io).
+            v.relocate(WORLD.WIDTH, WORLD.HEIGHT);
+            v.resetAfterSplit();
           }
         }
+      }
+      
+      // Check if virus should create offspring (fed 7 times)
+      if (v.canCreateOffspring() && this.viruses.length < this.cfg.virusCount + 2) {
+        // Create new virus 7-12 units away in random direction
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 7 + Math.random() * 5; // 7-12 units
+        const newVirusX = clampX(v.x + Math.cos(angle) * dist * 100);
+        const newVirusY = clampY(v.y + Math.sin(angle) * dist * 100);
+        
+        const newVirus = new Virus(newVirusX, newVirusY, VIRUS.MASS);
+        this.viruses.push(newVirus);
+        v.resetAfterSplit();
       }
     }
 
@@ -265,7 +390,13 @@ export class Room {
 
   split(player) {
     if (!player.alive) return;
-    const cells = player.cells.slice();
+    // Sort cells by split time (oldest first) so when player has >8 cells,
+    // the ones that split earliest are the ones that can split again
+    const cells = player.cells.slice().sort((a, b) => {
+      const aTime = a.splitAt || 0;
+      const bTime = b.splitAt || 0;
+      return aTime - bTime;  // oldest first
+    });
     for (const c of cells) {
       if (player.cells.length >= CELL.MAX_CELLS_PER_PLAYER) break;
       splitCell(c, player, this.cfg.splitSpeed);
@@ -284,35 +415,64 @@ export class Room {
     player.recomputeScore();
   }
 
+  // Eject mass: W = single pellet, E = fast shooting (all cells eject)
   ejectMass(player, key) {
     if (!player.alive) return;
-    for (const c of player.cells) {
-      if (c.mass < CELL.EJECT_MIN_MASS) continue;
-      c.mass -= CELL.EJECT_MASS;
-      const dx = (key === "w" ? 0 : 1);
-      const dy = 0;
-      const d = Math.hypot(dx, dy) || 1;
+
+    if (key === "w") {
+      // Single pellet: eject from the largest cell only
+      let largestCell = null;
+      let largestMass = 0;
+      for (const c of player.cells) {
+        // Must be at least 32 mass to eject (milestone) and have enough mass
+        if (c.mass > largestMass && c.mass >= CELL.MILESTONE_EJECT && c.mass >= CELL.EJECT_MIN_MASS) {
+          largestMass = c.mass;
+          largestCell = c;
+        }
+      }
+      if (!largestCell) return;
+
+      const dir = this._getEjectDirection(largestCell);
       const pellet = new Pellet(
-        c.x + (dx / d) * c.radius,
-        c.y + (dy / d) * c.radius,
-        CELL.EJECT_MASS,
+        largestCell.x + dir.x * largestCell.radius,
+        largestCell.y + dir.y * largestCell.radius,
+        CELL.EJECT_MASS_GAIN,  // 90% of 16 = 14.4
         true,
         player.id,
       );
-      pellet.vx = (dx / d) * CELL.EJECT_SPEED;
-      pellet.vy = (dy / d) * CELL.EJECT_SPEED;
-      // For real W/E keys we send from the client; default to direction of travel
-      // (this fallback is only used by bots or invalid input)
-      if (player.isBot) {
-        const vmag = Math.hypot(c.vx, c.vy);
-        if (vmag > 0.1) {
-          pellet.vx = (c.vx / vmag) * CELL.EJECT_SPEED;
-          pellet.vy = (c.vy / vmag) * CELL.EJECT_SPEED;
-        }
-      }
+      pellet.vx = dir.x * CELL.EJECT_SPEED;
+      pellet.vy = dir.y * CELL.EJECT_SPEED;
+      largestCell.mass -= CELL.EJECT_MASS_LOSS;  // lose 16 mass
       this.pellets.push(pellet);
+      player.recomputeScore();
+    } else if (key === "e") {
+      // Fast shooting: eject from all cells that can afford it
+      for (const c of player.cells) {
+        // Must be at least 32 mass to eject (milestone)
+        if (c.mass < CELL.MILESTONE_EJECT || c.mass < CELL.EJECT_MIN_MASS) continue;
+        const dir = this._getEjectDirection(c);
+        const pellet = new Pellet(
+          c.x + dir.x * c.radius,
+          c.y + dir.y * c.radius,
+          CELL.EJECT_MASS_GAIN,  // 90% efficiency
+          true,
+          player.id,
+        );
+        pellet.vx = dir.x * CELL.EJECT_SPEED;
+        pellet.vy = dir.y * CELL.EJECT_SPEED;
+        c.mass -= CELL.EJECT_MASS_LOSS;  // lose 16
+        this.pellets.push(pellet);
+      }
+      player.recomputeScore();
     }
-    player.recomputeScore();
+  }
+
+  // Get eject direction: toward mouse target by default
+  _getEjectDirection(cell) {
+    const dx = cell.owner.targetX - cell.x;
+    const dy = cell.owner.targetY - cell.y;
+    const d = Math.hypot(dx, dy) || 1;
+    return { x: dx / d, y: dy / d };
   }
 
   macroFeed(player) {
@@ -321,14 +481,14 @@ export class Room {
     const cells = player.cells.slice();
     for (const c of cells) {
       if (c.mass < CELL.EJECT_MIN_MASS) continue;
-      c.mass -= CELL.EJECT_MASS;
+      c.mass -= CELL.EJECT_MASS_LOSS;
       const vmag = Math.hypot(c.vx, c.vy);
       const dx = vmag > 0.1 ? c.vx / vmag : 1;
       const dy = vmag > 0.1 ? c.vy / vmag : 0;
       const pellet = new Pellet(
         c.x + dx * c.radius,
         c.y + dy * c.radius,
-        CELL.EJECT_MASS,
+        CELL.EJECT_MASS_GAIN,
         true,
         player.id,
       );
@@ -413,6 +573,7 @@ export class Room {
             c: e.owner.color,
             n: e.owner.name,
             cl: e.owner.clan || "",
+            s: e.owner.skin || "solid",
           });
         } else if (e instanceof Pellet) {
           if (seen.has(e.id)) continue;
@@ -437,6 +598,10 @@ export class Room {
           you,
           cells, pellets, viruses,
           view: { x: viewMinX, y: viewMinY, w: viewMaxX - viewMinX, h: viewMaxY - viewMinY },
+          gold: player.gold,
+          level: player.level,
+          xp: player.xp,
+          xpNeeded: player.level * 100,
         });
         try { conn.send(msg); } catch (_) {}
         // Leaderboard every other snapshot to save bandwidth

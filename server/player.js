@@ -14,6 +14,8 @@ export class Cell {
     this.mass = mass;
     this.vx = 0;
     this.vy = 0;
+    this.boostVx = 0;              // split boost velocity (decays with friction, not capped by movement speed)
+    this.boostVy = 0;
     this.spawnAt = Date.now();
     this.canMergeAt = 0;           // earliest timestamp this cell can re-merge with same owner cells
     this.fromSplit = false;        // true if recently split (cannot re-merge until merge cooldown)
@@ -24,13 +26,14 @@ export class Cell {
 }
 
 export class Player {
-  constructor({ id, name, mode, clan, isBot = false }) {
+  constructor({ id, name, mode, clan, isBot = false, skin = "solid", color = null }) {
     this.id = id;
     this.name = (name || "Player").slice(0, 24);
     this.mode = mode;
     this.isBot = !!isBot;
     this.clan = clan || null;       // CFFA only
-    this.color = pickColor(id);
+    this.color = color || pickColor(id);  // use chosen color, fall back to auto-assigned
+    this.skin = skin;               // solid, striped, dotted, gradient
     this.cells = [];                // Cell[]
     this.targetX = 0;               // last input target (mouse or bot)
     this.targetY = 0;
@@ -38,7 +41,11 @@ export class Player {
     this.joinedAt = Date.now();
     this.score = 0;                 // sum of cell masses
     this.lastInputAt = Date.now();
-    this.gold = 0;
+    this.gold = 0;                  // currency (integer, displayed to player)
+    this.goldAccumulator = 0;       // fractional gold accumulator for passive gain
+    this.xp = 0;                    // experience points
+    this.level = 1;                 // player level
+    this.totalMassEaten = 0;        // lifetime mass eaten for XP calculation
   }
 
   spawnInto(world, mass = CELL.START_MASS) {
@@ -64,6 +71,14 @@ export class Player {
 
   setStarterClusterSpawner(fn) {
     this._starterCluster = fn;
+  }
+
+  addFractionalGold(amount) {
+    this.goldAccumulator += amount;
+    while (this.goldAccumulator >= 1) {
+      this.gold++;
+      this.goldAccumulator -= 1;
+    }
   }
 
   recomputeScore() {

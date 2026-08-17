@@ -18,12 +18,15 @@
     </div>
     <div id="gold-pill">
       <span class="coin">$</span><span id="gold">0</span>
+      <span class="level-sep">|</span>
+      <span class="level">Lvl <span id="level">1</span></span>
     </div>
+    <div id="xp-bar"><div id="xp-fill"></div></div>
     <div id="mode-pill"><span id="mode-label">FFA</span></div>
     <div id="help-pill">
+      <small>ESC:pause</small>
       <small>Space:split</small>
       <small>W/E:eject</small>
-      <small>Z/X:macro</small>
       <small>A/S:gold</small>
     </div>
   </div>
@@ -47,6 +50,20 @@
     </div>
   </div>
 
+  <!-- Pause menu overlay -->
+  <div id="pause-menu" hidden>
+    <div class="card">
+      <h2>Paused</h2>
+      <p>Game running in background</p>
+      <div class="pause-buttons">
+        <button id="resume-pause-btn" type="button" class="secondary">Resume</button>
+        <button id="respawn-btn" type="button">Respawn Now</button>
+        <button id="menu-pause-btn" type="button" class="danger">Exit to Menu</button>
+      </div>
+      <p class="hint">Press ESC to resume</p>
+    </div>
+  </div>
+
   <!-- Main menu -->
   <main id="menu">
     <h1 class="title">Local<span class="accent">Agar</span></h1>
@@ -57,6 +74,54 @@
         <span>Name</span>
         <input id="name-input" type="text" maxlength="20" placeholder="Player" value="Player">
       </label>
+      
+      <fieldset id="skin-fieldset">
+        <legend>Cell Skin</legend>
+        <div class="color-row">
+          <span class="color-label">Colour</span>
+          <div class="color-swatches" id="color-swatches">
+            <label class="color-swatch" style="--swatch:#ff6b6b"><input type="radio" name="color" value="#ff6b6b" checked></label>
+            <label class="color-swatch" style="--swatch:#4ecdc4"><input type="radio" name="color" value="#4ecdc4"></label>
+            <label class="color-swatch" style="--swatch:#ffe066"><input type="radio" name="color" value="#ffe066"></label>
+            <label class="color-swatch" style="--swatch:#a78bfa"><input type="radio" name="color" value="#a78bfa"></label>
+            <label class="color-swatch" style="--swatch:#fb7185"><input type="radio" name="color" value="#fb7185"></label>
+            <label class="color-swatch" style="--swatch:#34d399"><input type="radio" name="color" value="#34d399"></label>
+            <label class="color-swatch" style="--swatch:#60a5fa"><input type="radio" name="color" value="#60a5fa"></label>
+            <label class="color-swatch" style="--swatch:#f472b6"><input type="radio" name="color" value="#f472b6"></label>
+            <label class="color-swatch" style="--swatch:#fbbf24"><input type="radio" name="color" value="#fbbf24"></label>
+            <label class="color-swatch" style="--swatch:#22d3ee"><input type="radio" name="color" value="#22d3ee"></label>
+            <label class="color-swatch" style="--swatch:#f97316"><input type="radio" name="color" value="#f97316"></label>
+            <label class="color-swatch" style="--swatch:#10b981"><input type="radio" name="color" value="#10b981"></label>
+          </div>
+          <label class="custom-color">
+            <input type="color" id="custom-color-input" value="#4ecdc4">
+            <small>Custom</small>
+          </label>
+        </div>
+        <div class="skin-options">
+          <label class="skin-option">
+            <input type="radio" name="skin" value="solid" checked>
+            <span class="skin-preview solid"></span>
+            <small>Solid</small>
+          </label>
+          <label class="skin-option">
+            <input type="radio" name="skin" value="striped">
+            <span class="skin-preview striped"></span>
+            <small>Striped</small>
+          </label>
+          <label class="skin-option">
+            <input type="radio" name="skin" value="dotted">
+            <span class="skin-preview dotted"></span>
+            <small>Dotted</small>
+          </label>
+          <label class="skin-option">
+            <input type="radio" name="skin" value="gradient">
+            <span class="skin-preview gradient"></span>
+            <small>Gradient</small>
+          </label>
+        </div>
+      </fieldset>
+
       <fieldset id="mode-fieldset">
         <legend>Game mode</legend>
         <label class="mode"><input type="radio" name="mode" value="ffa" checked> <b>FFA</b> <small>free-for-all</small></label>
@@ -81,12 +146,14 @@
       <summary>How to play</summary>
       <ul>
         <li>Move with the mouse</li>
-        <li><b>Space</b> — split into two cells</li>
-        <li><b>W</b> / <b>E</b> — eject mass (W away, E toward mouse)</li>
-        <li><b>Z</b> — macro split, <b>X</b> — macro feed</li>
-        <li><b>A</b> / <b>S</b> — spend gold to gain mass (need gold first)</li>
+        <li><b>ESC</b> — pause menu (game continues in background)</li>
+        <li><b>Space (hold)</b> — split into cells (hold for more distance)</li>
+        <li><b>E</b> — fast eject mass, <b>W</b> — single pellet</li>
+        <li><b>A</b> / <b>S</b> — spend gold to gain mass</li>
         <li>Eat pellets and smaller players to grow</li>
         <li>Avoid viruses (green spiked circles) — they'll split you if you're big</li>
+        <li><b>Gold:</b> Earned passively over time + big rewards for eating players (bigger = more gold)</li>
+        <li><b>Colour:</b> Pick your cell colour from the colour palette or use a custom colour</li>
       </ul>
     </details>
   </main>

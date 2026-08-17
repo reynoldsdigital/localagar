@@ -121,8 +121,8 @@ export class Net {
     try { this.ws.send(JSON.stringify(msg)); }
     catch (e) { console.warn("[net] send failed", e); }
   }
-  join({ name, mode, clan }) {
-    this.send({ t: "join", name, mode, clan });
+  join({ name, mode, clan, skin, color }) {
+    this.send({ t: "join", name, mode, clan, skin, color });
   }
   sendInput(x, y) {
     const now = performance.now();
@@ -134,4 +134,5 @@ export class Net {
   eject(key) { this.send({ t: "eject", key }); }
   macro(key) { this.send({ t: "macro", key }); }
   gold(key)  { this.send({ t: "gold", key }); }
+  respawn() { this.send({ t: "respawn" }); }
 }

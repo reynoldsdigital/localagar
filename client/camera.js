@@ -10,6 +10,10 @@ export class Camera {
     this.targetX = 0;
     this.targetY = 0;
     this.targetZoom = 1;
+    // Velocity for smoother camera movement
+    this.vx = 0;
+    this.vy = 0;
+    this.vzoom = 0;
   }
   setTargetCenter(cx, cy, mass, viewW, viewH) {
     this.targetX = cx;
@@ -20,11 +24,49 @@ export class Camera {
     this.targetZoom = Math.max(0.25, Math.min(1.5, desired));
   }
   step(dtSec) {
-    // Smooth chase
-    const lerp = 1 - Math.pow(0.001, dtSec);
-    this.x += (this.targetX - this.x) * lerp;
-    this.y += (this.targetY - this.y) * lerp;
-    this.zoom += (this.targetZoom - this.zoom) * lerp;
+    // Smoother camera with acceleration/deceleration (less jittery)
+    const dx = this.targetX - this.x;
+    const dy = this.targetY - this.y;
+    const dz = this.targetZoom - this.zoom;
+    
+    // Accelerate toward target, with damping
+    const accel = 15.0;
+    const damping = 0.88;
+    
+    this.vx += dx * accel * dtSec;
+    this.vy += dy * accel * dtSec;
+    this.vzoom += dz * accel * dtSec * 0.5;
+    
+    // Apply damping
+    this.vx *= damping;
+    this.vy *= damping;
+    this.vzoom *= damping;
+    
+    // Clamp velocities
+    const maxVel = 8000;
+    const vmag = Math.hypot(this.vx, this.vy);
+    if (vmag > maxVel) {
+      this.vx = (this.vx / vmag) * maxVel;
+      this.vy = (this.vy / vmag) * maxVel;
+    }
+    
+    // Integrate position
+    this.x += this.vx * dtSec;
+    this.y += this.vy * dtSec;
+    this.zoom += this.vzoom * dtSec;
+    
+    // Snap to target when very close (prevents micro-jitter)
+    const snapDist = 0.5;
+    if (Math.abs(dx) < snapDist && Math.abs(dy) < snapDist) {
+      this.x = this.targetX;
+      this.y = this.targetY;
+      this.vx = 0;
+      this.vy = 0;
+    }
+    if (Math.abs(dz) < 0.001) {
+      this.zoom = this.targetZoom;
+      this.vzoom = 0;
+    }
   }
   worldToScreen(x, y, viewW, viewH) {
     return [
