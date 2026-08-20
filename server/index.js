@@ -196,14 +196,49 @@ wss.on("connection", (ws, req) => {
 });
 
 httpServer.listen(PORT, HOST, () => {
-  const tailIP = (() => { try { return execSync("tailscale ip -4 2>/dev/null", { encoding: "utf8", timeout: 1000 }).trim().split(/\s+/)[0] || null; } catch { return null; } })();
+  // Detect Tailscale presence cross-platform (no shell-only redirects so it
+  // works on Windows too). Prefer the MagicDNS hostname (e.g. "mr") so the
+  // printed URL matches what other tailnet devices should type.
+  const tail = detectTailscale();
   const lines = [];
   lines.push(`[localagar] listening on ${HOST}:${PORT}`);
   lines.push(`  local      http://localhost:${PORT}`);
-  if (tailIP) lines.push(`  tailscale  http://${tailIP}:${PORT}    (use this from other tailnet devices)`);
+  if (tail && tail.name) lines.push(`  tailscale  http://${tail.name}:${PORT}    (MagicDNS — use this from other tailnet devices)`);
+  if (tail && tail.ip && tail.name !== tail.ip) lines.push(`  tailscale  http://${tail.ip}:${PORT}    (IP fallback)`);
+  else if (tail && tail.ip) lines.push(`  tailscale  http://${tail.ip}:${PORT}    (use this from other tailnet devices)`);
   if (HOST === "0.0.0.0") lines.push(`  lan        http://<lan-ip>:${PORT}        (any interface)`);
   console.log(lines.join("\n"));
 });
+
+// Best-effort Tailscale detection. Returns { name, ip } or null.
+//   name = MagicDNS short hostname (e.g. "mr"), derived from Self.DNSName
+//   ip   = first Tailscale IPv4
+// Uses `tailscale status --json` (stdout captured, no shell redirects) so it
+// works on both Linux and Windows. Falls back to `tailscale ip -4`.
+function detectTailscale() {
+  // Try the structured form first.
+  try {
+    const out = execSync("tailscale status --json", { encoding: "utf8", timeout: 2000 });
+    const j = JSON.parse(out);
+    const self = j.Self || {};
+    let name = null;
+    if (self.DNSName) {
+      // DNSName is an FQDN like "mr.tailnet.ts.net" — take the first label
+      // for the short MagicDNS name.
+      name = self.DNSName.split(".")[0] || null;
+    } else if (self.HostName) {
+      name = self.HostName.split(".")[0] || null;
+    }
+    const ip = (self.TailscaleIPs || []).find(x => x.includes(".")) || null;
+    if (name || ip) return { name, ip };
+  } catch (_) { /* not installed or not running */ }
+  // Fallback: just the IPv4.
+  try {
+    const ip = execSync("tailscale ip -4", { encoding: "utf8", timeout: 1000 }).trim().split(/\s+/)[0] || null;
+    if (ip) return { name: null, ip };
+  } catch (_) {}
+  return null;
+}
 
 process.on("SIGINT", () => {
   console.log("\n[localagar] shutting down…");
