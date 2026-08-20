@@ -51,7 +51,9 @@ export const CELL = Object.freeze({
 
 export const PELLET = Object.freeze({
   COUNT: 7000,
-  MASS: 3,
+  MASS: 3,                  // legacy average (used by ejected pellets)
+  MASS_MIN: 2,              // ambient pellets vary in size for visual variety
+  MASS_MAX: 6,
   RADIUS: 7,
   PICKUP_RADIUS: 20,
   EJECTED_PICKUP_RADIUS: 28,
@@ -83,6 +85,14 @@ export const MODE_CONFIG = Object.freeze({
 
 export const CLAN_TAGS = Object.freeze([
   "RED", "BLU", "GRN", "YEL", "PRP", "ORG", "CYN", "MAG",
+]);
+
+// Shared colour palette used for cell skins AND ambient pellets, so the
+// collectable mass blends in with the player colours.
+export const PALETTE = Object.freeze([
+  "#ff6b6b", "#4ecdc4", "#ffe066", "#a78bfa", "#fb7185",
+  "#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#22d3ee",
+  "#f97316", "#10b981", "#e879f9", "#fb923c", "#84cc16",
 ]);
 
 export const GOLD = Object.freeze({

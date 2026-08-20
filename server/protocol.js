@@ -9,9 +9,13 @@ export const S2C = Object.freeze({
   PLAYER_JOINED: "player_joined",
   PLAYER_LEFT: "player_left",
   LEADERBOARD: "leaderboard",   // { rows: [{id,name,score}] }
+  LOGIN_OK: "login_ok",         // { name, created, stats }
+  LOGIN_FAIL: "login_fail",     // { reason }
+  DEATH: "death",               // { run, lifetime }
 });
 
 export const C2S = Object.freeze({
+  LOGIN: { t: "login", payload: { name: "string", password: "string" } },
   JOIN: { t: "join", payload: { name: "string", mode: "string", clan: "string|null" } },
   INPUT: { t: "input", payload: { x: "number", y: "number" } },
   SPLIT: { t: "split" },

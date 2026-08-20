@@ -659,3 +659,109 @@ noscript {
 @media (max-height: 620px) {
   #objectives { top: 460px; }
 }
+
+/* ---- Login form (password / remember) ---- */
+#join-form label.remember-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+#join-form label.remember-row input { width: auto; }
+#join-form #password-input {
+  background: #1c2030;
+  border: 1px solid #2a3046;
+  color: var(--fg);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+}
+#join-form #password-input:focus { border-color: var(--accent); }
+.login-err {
+  margin: 0;
+  min-height: 16px;
+  font-size: 13px;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ---- Death review screen ---- */
+#death {
+  pointer-events: none;          /* let clicks pass through to the canvas,
+                                    except on the card itself */
+}
+#death .death-card {
+  pointer-events: auto;
+  background: rgba(20, 22, 30, 0.96);
+  padding: 22px 28px 18px;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: var(--shadow);
+  width: min(560px, 92vw);
+}
+#death h2 { margin: 0 0 12px; color: var(--danger); }
+.death-cols {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  text-align: left;
+}
+.death-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.death-col h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding-bottom: 4px;
+}
+.death-stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+}
+.death-stats li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+.death-stats li span { color: var(--muted); }
+.death-stats li b { color: var(--fg); }
+.death-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+.death-buttons button {
+  flex: 1 1 0;
+  max-width: 200px;
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 15px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+#death .death-buttons button { background: var(--accent); color: #0a0d12; }
+#death .death-buttons button.secondary { background: #2a3046; color: var(--fg); }
+.death-buttons button:hover { filter: brightness(1.1); }
+#death .hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+@media (max-width: 460px) {
+  .death-cols { flex-direction: column; gap: 12px; }
+}

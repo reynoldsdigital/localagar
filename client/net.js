@@ -121,6 +121,9 @@ export class Net {
     try { this.ws.send(JSON.stringify(msg)); }
     catch (e) { console.warn("[net] send failed", e); }
   }
+  login(name, password) {
+    this.send({ t: "login", name, password });
+  }
   join({ name, mode, clan, skin, color }) {
     this.send({ t: "join", name, mode, clan, skin, color });
   }

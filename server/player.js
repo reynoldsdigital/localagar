@@ -1,10 +1,11 @@
 // Player + cell state on the server.
 // A player owns one or more `cells` until they die or split off too much.
 
-import { CELL, CLAN_TAGS, massToRadius, nextId } from "../shared/constants.js";
+import { CELL, CLAN_TAGS, massToRadius, nextId, PALETTE } from "../shared/constants.js";
 import { rankFromPoints, rankLabel, RANK_RP } from "../shared/ranks.js";
 
 let __cellSerial = 0;
+let __playerSerial = 0;
 
 export class Cell {
   constructor(owner, x, y, mass) {
@@ -47,6 +48,7 @@ export class Player {
     this.xp = 0;                    // experience points
     this.level = 1;                 // player level
     this.totalMassEaten = 0;        // lifetime mass eaten for XP calculation
+    this.serial = ++__playerSerial;
     // --- Ranking / objective tracking ---
     this.kills = 0;                 // number of players (real + bot) eaten
     this.playerKills = 0;           // real players eaten
@@ -54,6 +56,17 @@ export class Player {
     this.rankPoints = 0;            // RP for the competitive ladder
     this.hasEatenPlayer = false;    // gates gold-to-mass (must eat a player first)
     this._lastRankDivIndex = 0;     // last division shown to the client (for rank-up events)
+
+    // --- Persistence / per-run tracking ---
+    this.accountName = null;          // account this player is logged in as
+    this.bestScore = 0;               // highest mass ever reached (persisted)
+    this.runStartedAt = Date.now();
+    this.runMaxMass = 0;
+    this.runStartGold = 0;
+    this.runStartKills = 0;
+    this.runStartPlayerKills = 0;
+    this.runStartViruses = 0;
+    this.runStartRank = 0;
   }
 
   // Current rank info derived from RP.  Returns the structure from
@@ -99,6 +112,15 @@ export class Player {
     if (this._starterCluster && typeof this._starterCluster === "function") {
       this._starterCluster(cell.x, cell.y);
     }
+    // (Re)start per-run tracking. Snapshot current lifetime totals so the
+    // death screen can show what was gained THIS run.
+    this.runStartedAt = Date.now();
+    this.runMaxMass = mass;
+    this.runStartGold = this.gold;
+    this.runStartKills = this.kills;
+    this.runStartPlayerKills = this.playerKills;
+    this.runStartViruses = this.virusesEaten;
+    this.runStartRank = this.rankPoints;
     return cell;
   }
 
@@ -125,12 +147,6 @@ export class Player {
     this.cells.length = 0;
   }
 }
-
-const PALETTE = [
-  "#ff6b6b", "#4ecdc4", "#ffe066", "#a78bfa", "#fb7185",
-  "#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#22d3ee",
-  "#f97316", "#10b981", "#e879f9", "#fb923c", "#84cc16",
-];
 
 function pickColor(seed) {
   // Stable hash -> palette index

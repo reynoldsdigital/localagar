@@ -60,11 +60,39 @@
     <canvas id="minimap-canvas" width="180" height="180"></canvas>
   </div>
 
-  <!-- Death overlay -->
+  <!-- Death review screen -->
   <div id="death" hidden>
-    <div class="card">
+    <div class="death-card">
       <h2>You were eaten!</h2>
-      <p>Respawning in <span id="death-count">3</span>…</p>
+      <div class="death-cols">
+        <div class="death-col">
+          <h4>This run</h4>
+          <ul class="death-stats">
+            <li><span>Max mass</span><b id="death-run-mass">0</b></li>
+            <li><span>Time alive</span><b id="death-run-duration">0s</b></li>
+            <li><span>Kills</span><b id="death-run-kills">0</b></li>
+            <li><span>Viruses</span><b id="death-run-viruses">0</b></li>
+            <li><span>Gold gained</span><b id="death-run-gold">0</b></li>
+            <li><span>RP gained</span><b id="death-run-rp">0</b></li>
+          </ul>
+        </div>
+        <div class="death-col">
+          <h4>Lifetime (saved)</h4>
+          <ul class="death-stats">
+            <li><span>Rank</span><b id="death-lt-rank">Bronze I</b></li>
+            <li><span>Level</span><b id="death-lt-level">1</b></li>
+            <li><span>Gold</span><b id="death-lt-gold">0</b></li>
+            <li><span>Total kills</span><b id="death-lt-kills">0</b></li>
+            <li><span>Viruses</span><b id="death-lt-viruses">0</b></li>
+            <li><span>Best mass</span><b id="death-lt-best">0</b></li>
+          </ul>
+        </div>
+      </div>
+      <div class="death-buttons">
+        <button id="death-respawn-btn" type="button">Respawn</button>
+        <button id="death-menu-btn" type="button" class="secondary">Main Menu</button>
+      </div>
+      <p class="hint">Your progress has been saved.</p>
     </div>
   </div>
 
@@ -90,9 +118,18 @@
     <form id="join-form" autocomplete="off">
       <label>
         <span>Name</span>
-        <input id="name-input" type="text" maxlength="20" placeholder="Player" value="Player">
+        <input id="name-input" type="text" maxlength="20" placeholder="Player" value="Player" autocomplete="username">
       </label>
-      
+      <label>
+        <span>Password</span>
+        <input id="password-input" type="password" maxlength="64" placeholder="Log in / register" autocomplete="current-password">
+      </label>
+      <label class="remember-row">
+        <input id="remember-check" type="checkbox">
+        <span>Remember me on this device</span>
+      </label>
+      <p id="login-err" class="login-err"></p>
+
       <fieldset id="skin-fieldset">
         <legend>Cell Skin</legend>
         <div class="color-row">

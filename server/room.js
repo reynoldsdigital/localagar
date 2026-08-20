@@ -13,6 +13,7 @@ import {
 } from "./physics.js";
 import { S2C } from "./protocol.js";
 import { botThink, pickBotName } from "./bot.js";
+import * as accounts from "./accounts.js";
 
 const TICK_MS = 1000 / TICK_RATE;
 const SNAPSHOT_INTERVAL_MS = 1000 / 30;
@@ -67,6 +68,36 @@ export class Room {
     const label = this._pendingRankUps.get(playerId);
     if (label) this._pendingRankUps.delete(playerId);
     return label || null;
+  }
+
+  // Build the death-review payload sent to the client when a player is
+  // eaten. Includes this-run stats and lifetime totals.
+  _deathPayload(player) {
+    const ri = player.getRankInfo();
+    return {
+      t: S2C.DEATH,
+      run: {
+        maxMass: Math.floor(player.runMaxMass || 0),
+        duration: Math.max(0, Math.floor((Date.now() - (player.runStartedAt || Date.now())) / 1000)),
+        kills: Math.max(0, player.kills - player.runStartKills),
+        playerKills: Math.max(0, player.playerKills - player.runStartPlayerKills),
+        virusesEaten: Math.max(0, player.virusesEaten - player.runStartViruses),
+        goldGained: Math.max(0, player.gold - player.runStartGold),
+        rpGained: Math.max(0, player.rankPoints - player.runStartRank),
+      },
+      lifetime: {
+        gold: player.gold,
+        level: player.level,
+        rankPoints: player.rankPoints,
+        rankLabel: ri.label,
+        divIndex: ri.divIndex,
+        kills: player.kills,
+        playerKills: player.playerKills,
+        virusesEaten: player.virusesEaten,
+        totalMassEaten: Math.floor(player.totalMassEaten),
+        bestScore: Math.floor(Math.max(player.bestScore || 0, player.runMaxMass || 0)),
+      },
+    };
   }
 
   addPlayer(player) {
@@ -189,6 +220,8 @@ export class Room {
       separateCells(p);
       mergeCells(p);
       p.recomputeScore();
+      if (p.score > p.runMaxMass) p.runMaxMass = p.score;
+      if (p.runMaxMass > p.bestScore) p.bestScore = p.runMaxMass;
     }
 
     // Move ejected pellets (they travel and then slow down)
@@ -277,14 +310,14 @@ export class Room {
             other.owner.cells = other.owner.cells.filter(cc => cc !== other);
             if (other.owner.cells.length === 0) {
               other.owner.kill();
-              // Real players respawn after a short delay
+              // Real players: persist progress and show the death review
+              // screen. They choose Respawn or Main Menu from the client.
               if (!other.owner.isBot && this.realPlayers.has(other.owner.id)) {
-                setTimeout(() => {
-                  if (!other.owner.alive && this.realPlayers.has(other.owner.id)) {
-                    other.owner.alive = true;
-                    other.owner.spawnInto(this.world, CELL.START_MASS);
-                  }
-                }, 1500);
+                accounts.savePlayer(other.owner);
+                const conn = this._conns.get(other.owner.id);
+                if (conn && conn.readyState === 1) {
+                  try { conn.send(JSON.stringify(this._deathPayload(other.owner))); } catch (_) {}
+                }
               }
             }
             // Remove from grid (it was inserted this tick)
@@ -396,6 +429,14 @@ export class Room {
         Math.random() * WORLD.WIDTH,
         Math.random() * WORLD.HEIGHT,
       ));
+    }
+
+    // Periodically persist real players' progress to their accounts.
+    if (now - (this._lastAccountSaveAt || 0) > 5000) {
+      this._lastAccountSaveAt = now;
+      for (const p of this.players) {
+        if (!p.isBot && p.accountName && this.realPlayers.has(p.id)) accounts.savePlayer(p);
+      }
     }
 
     // Broadcast
@@ -569,7 +610,10 @@ export class Room {
       // wider padding to see further, smaller cells just need enough to find
       // their next pellet.
       const cellR = player.cells.reduce((m, c) => Math.max(m, c.radius), 0);
-      const pad = Math.max(800, cellR * 8);
+      // Larger viewport padding so the player sees more surrounding
+      // players/pellets/viruses (was cellR*8). Capped to avoid sending
+      // the whole world for very large cells.
+      const pad = Math.min(3500, Math.max(1200, cellR * 15));
       const viewMinX = Math.max(0, minX - pad);
       const viewMinY = Math.max(0, minY - pad);
       const viewMaxX = Math.min(WORLD.WIDTH, maxX + pad);

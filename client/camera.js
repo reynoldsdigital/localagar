@@ -18,10 +18,12 @@ export class Camera {
   setTargetCenter(cx, cy, mass, viewW, viewH) {
     this.targetX = cx;
     this.targetY = cy;
-    // Pick zoom so the cell takes ~8% of the screen width
+    // Larger divisor + lower min zoom => the player appears smaller and
+    // you see much more of the surrounding world (players/pellets/viruses).
+    // Max zoom is capped a bit lower too so small cells pull back slightly.
     const r = massToRadius(mass);
-    const desired = Math.min(viewW, viewH) / (r * 24);
-    this.targetZoom = Math.max(0.25, Math.min(1.5, desired));
+    const desired = Math.min(viewW, viewH) / (r * 30);
+    this.targetZoom = Math.max(0.20, Math.min(1.25, desired));
   }
   step(dtSec) {
     // Smoother camera with acceleration/deceleration (less jittery)

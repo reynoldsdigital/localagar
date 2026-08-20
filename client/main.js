@@ -15,7 +15,6 @@ const pauseMenuEl = document.getElementById("pause-menu");
 const respawnBtn = document.getElementById("respawn-btn");
 const resumePauseBtn = document.getElementById("resume-pause-btn");
 const menuPauseBtn = document.getElementById("menu-pause-btn");
-const deathCountEl = document.getElementById("death-count");
 const scoreEl = document.getElementById("score");
 const rankEl = document.getElementById("rank");
 const goldEl = document.getElementById("gold");
@@ -44,6 +43,33 @@ const objVirusesEl = document.getElementById("obj-viruses");
 const massGateEl = document.getElementById("mass-gate");
 const rankUpToastEl = document.getElementById("rank-up-toast");
 const rankUpLabelEl = document.getElementById("rank-up-label");
+const nameInput = document.getElementById("name-input");
+const passwordInput = document.getElementById("password-input");
+const rememberCheck = document.getElementById("remember-check");
+const loginErrEl = document.getElementById("login-err");
+const deathRunMassEl = document.getElementById("death-run-mass");
+const deathRunDurEl = document.getElementById("death-run-duration");
+const deathRunKillsEl = document.getElementById("death-run-kills");
+const deathRunVirusesEl = document.getElementById("death-run-viruses");
+const deathRunGoldEl = document.getElementById("death-run-gold");
+const deathRunRpEl = document.getElementById("death-run-rp");
+const deathLtRankEl = document.getElementById("death-lt-rank");
+const deathLtLevelEl = document.getElementById("death-lt-level");
+const deathLtGoldEl = document.getElementById("death-lt-gold");
+const deathLtKillsEl = document.getElementById("death-lt-kills");
+const deathLtVirusesEl = document.getElementById("death-lt-viruses");
+const deathLtBestEl = document.getElementById("death-lt-best");
+const deathRespawnBtn = document.getElementById("death-respawn-btn");
+const deathMenuBtn = document.getElementById("death-menu-btn");
+
+// --- Remember last login (name + optional password) ---
+try {
+  const saved = JSON.parse(localStorage.getItem("localagar.login") || "null");
+  if (saved && saved.name) {
+    nameInput.value = saved.name;
+    if (saved.password) { passwordInput.value = saved.password; rememberCheck.checked = true; }
+  }
+} catch (_) {}
 
 // --- Color picker: update skin previews in real time ---
 function getSelectedColor() {
@@ -119,6 +145,20 @@ let state = {
 
 let net, input, renderer;
 
+// Disconnect and return to the main menu.
+function exitToMenu() {
+  if (net && net.ws) { try { net.ws.close(); } catch (_) {} }
+  menu.hidden = false;
+  hudEl.hidden = true;
+  leaderboardEl.hidden = true;
+  minimapEl.hidden = true;
+  pauseMenuEl.hidden = true;
+  deathEl.hidden = true;
+  objectivesEl.hidden = true;
+  state.paused = false;
+  if (input) input.stop();
+}
+
 // ---------------------------------------------------------------------------
 // Pause-menu button handlers — registered ONCE, outside startGame() so they
 // are not duplicated on rejoin.
@@ -149,19 +189,14 @@ respawnBtn.addEventListener("click", () => {
 });
 
 // Exit to menu — disconnect and return to the main menu.
-menuPauseBtn.addEventListener("click", () => {
-  if (net && net.ws) {
-    try { net.ws.close(); } catch (_) {}
-  }
-  menu.hidden = false;
-  hudEl.hidden = true;
-  leaderboardEl.hidden = true;
-  minimapEl.hidden = true;
-  pauseMenuEl.hidden = true;
+menuPauseBtn.addEventListener("click", exitToMenu);
+
+// Death-screen buttons (registered once).
+deathRespawnBtn.addEventListener("click", () => {
+  if (net) net.respawn();
   deathEl.hidden = true;
-  state.paused = false;
-  if (input) input.stop();
 });
+deathMenuBtn.addEventListener("click", exitToMenu);
 
 // ---------------------------------------------------------------------------
 // Main menu / join form
@@ -177,17 +212,30 @@ for (const r of modeFieldset.querySelectorAll('input[type="radio"]')) {
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
-  const name = (document.getElementById("name-input").value || "Player").trim();
+  const name = (nameInput.value || "Player").trim();
+  const password = passwordInput.value || "";
+  const remember = rememberCheck.checked;
+  if (loginErrEl) loginErrEl.textContent = "";
+  if (!password) {
+    if (loginErrEl) loginErrEl.textContent = "Enter a password to log in (or register).";
+    return;
+  }
+  // Remember the login locally so next time it's one click.
+  try {
+    localStorage.setItem("localagar.login", JSON.stringify(
+      remember ? { name, password } : { name }
+    ));
+  } catch (_) {}
   const mode = modeFieldset.querySelector('input[name="mode"]:checked').value;
   const skin = document.querySelector('input[name="skin"]:checked')?.value || "solid";
   const color = getSelectedColor();
   const clan = mode === "cffa"
     ? document.querySelector('input[name="clan"]:checked')?.value || "RED"
     : null;
-  startGame({ name, mode, clan, skin, color });
+  startGame({ name, password, mode, clan, skin, color });
 });
 
-function startGame({ name, mode, clan, skin, color }) {
+function startGame({ name, password, mode, clan, skin, color }) {
   state.mode = mode;
   state.skin = skin;
   state.paused = false;
@@ -209,14 +257,24 @@ function startGame({ name, mode, clan, skin, color }) {
   });
   net.on("snapshot", (msg) => renderer.applySnapshot(msg));
   net.on("leaderboard", (msg) => renderer.applyLeaderboard(msg.rows));
+  net.on("death", (msg) => showDeath(msg));
+  net.on("login_ok", (msg) => {
+    console.log("[main] login ok", msg.name, msg.created ? "(new account)" : "(returning)");
+    if (loginErrEl) loginErrEl.textContent = "";
+    // Now join the room with the saved/confirmed name.
+    net.join({ name: msg.name, mode, clan, skin, color });
+  });
+  net.on("login_fail", (msg) => {
+    console.warn("[main] login failed", msg && msg.reason);
+    if (loginErrEl) loginErrEl.textContent = (msg && msg.reason) || "Login failed";
+    showDiag("Login failed", (msg && msg.reason) || "Login failed");
+    try { if (net && net.ws) net.ws.close(); } catch (_) {}
+    exitToMenu();
+  });
   net.on("open", () => {
-    console.log("[main] ws open, sending join");
-    net.join({ name, mode, clan, skin, color });
-    menu.hidden = true;
-    hudEl.hidden = false;
-    leaderboardEl.hidden = false;
-    minimapEl.hidden = false;
-    showDiag("Connecting to game…", "WebSocket open, waiting for welcome…");
+    console.log("[main] ws open, sending login");
+    net.login(name, password);
+    showDiag("Connecting…", "Logging in…");
   });
   net.on("error", (e) => {
     console.warn("[main] ws error", e);
@@ -273,13 +331,9 @@ setInterval(() => {
     const xpPct = state.xpNeeded > 0 ? (state.xp / state.xpNeeded) * 100 : 0;
     xpFillEl.style.width = `${Math.min(100, xpPct)}%`;
   }
-  if (!state.alive) {
-    deathEl.hidden = false;
-    const remaining = Math.max(0, 1500 - (Date.now() - renderer.getDeathAt()));
-    deathCountEl.textContent = Math.max(1, Math.ceil(remaining / 1000));
-  } else {
-    deathEl.hidden = true;
-  }
+  // The death screen is shown by the "death" event (with stats) and hidden
+  // again on respawn; here we only clear it if the player is alive.
+  if (state.alive) deathEl.hidden = true;
 }, 100);
 
 // Render leaderboard rows
@@ -295,6 +349,33 @@ setInterval(() => {
     leaderRowsEl.appendChild(li);
   });
 }, 500);
+
+// Populate + show the death-review screen.
+function showDeath(msg) {
+  if (!msg) return;
+  const run = msg.run || {};
+  const lt = msg.lifetime || {};
+  if (deathRunMassEl) deathRunMassEl.textContent = run.maxMass || 0;
+  if (deathRunDurEl) deathRunDurEl.textContent = fmtDuration(run.duration || 0);
+  if (deathRunKillsEl) deathRunKillsEl.textContent = run.kills || 0;
+  if (deathRunVirusesEl) deathRunVirusesEl.textContent = run.virusesEaten || 0;
+  if (deathRunGoldEl) deathRunGoldEl.textContent = "+" + (run.goldGained || 0);
+  if (deathRunRpEl) deathRunRpEl.textContent = "+" + (run.rpGained || 0);
+  if (deathLtRankEl) deathLtRankEl.textContent = lt.rankLabel || "Bronze I";
+  if (deathLtLevelEl) deathLtLevelEl.textContent = lt.level || 1;
+  if (deathLtGoldEl) deathLtGoldEl.textContent = lt.gold || 0;
+  if (deathLtKillsEl) deathLtKillsEl.textContent = lt.kills || 0;
+  if (deathLtVirusesEl) deathLtVirusesEl.textContent = lt.virusesEaten || 0;
+  if (deathLtBestEl) deathLtBestEl.textContent = lt.bestScore || 0;
+  deathEl.hidden = false;
+}
+
+function fmtDuration(sec) {
+  sec = Math.floor(sec || 0);
+  if (sec < 60) return sec + "s";
+  const m = Math.floor(sec / 60), r = sec % 60;
+  return m + "m " + r + "s";
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, ch => ({

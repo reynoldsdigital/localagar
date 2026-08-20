@@ -12,6 +12,7 @@ import { Player } from "./player.js";
 import { Pellet } from "./pellet.js";
 import { S2C, C2S } from "./protocol.js";
 import { MODES, MODE_CONFIG, CELL } from "../shared/constants.js";
+import * as accounts from "./accounts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,11 +94,13 @@ wss.on("connection", (ws, req) => {
   console.log(`[ws] connected from ${ip} ua=${(req.headers["user-agent"] || "?").toString().slice(0, 60)}`);
   let player = null;
   let room = null;
+  let account = null;
   let alive = true;
 
   ws.on("close", () => {
     alive = false;
     console.log(`[ws] closed ip=${ip} player=${player?.id || "(none)"}`);
+    if (player) accounts.savePlayer(player);
     if (player && room) server.removePlayer(player.id, room);
   });
 
@@ -109,19 +112,49 @@ wss.on("connection", (ws, req) => {
     else if (alive) console.log(`[ws] ${msg.t} from ${ip}`);
 
     switch (msg.t) {
+      case "login": {
+        // Authenticate (or register) an account before joining a room.
+        const res = accounts.login(msg.name, msg.password);
+        if (!res.ok) {
+          ws.send(JSON.stringify({ t: S2C.LOGIN_FAIL, reason: res.reason || "Login failed" }));
+          return;
+        }
+        account = res.account;
+        ws.send(JSON.stringify({
+          t: S2C.LOGIN_OK,
+          name: account.name,
+          created: !!res.created,
+          stats: {
+            gold: account.gold, level: account.level, xp: account.xp,
+            rankPoints: account.rankPoints, kills: account.kills,
+            playerKills: account.playerKills, virusesEaten: account.virusesEaten,
+            totalMassEaten: account.totalMassEaten, hasEatenPlayer: !!account.hasEatenPlayer,
+            bestScore: account.bestScore || 0,
+          },
+        }));
+        break;
+      }
       case "join": {
+        // Must be logged in first.
+        if (!account) {
+          ws.send(JSON.stringify({ t: S2C.LOGIN_FAIL, reason: "Not logged in" }));
+          return;
+        }
         const mode = (msg.mode in MODE_CONFIG) ? msg.mode : MODES.FFA;
         const clan = mode === MODES.CFFA ? (typeof msg.clan === "string" ? msg.clan : null) : null;
         const skin = typeof msg.skin === "string" ? msg.skin.slice(0, 16) : "solid";
         const color = typeof msg.color === "string" && /^#[0-9a-fA-F]{6}$/.test(msg.color) ? msg.color : null;
         player = new Player({
           id: `p_${Math.random().toString(36).slice(2, 10)}`,
-          name: (msg.name || "Player").toString().slice(0, 24),
+          name: account.name,
           mode,
           clan,
           skin,
           color,
         });
+        // Restore saved progress before spawning so the run-start
+        // snapshot captures the loaded totals.
+        accounts.applyAccount(player, account);
         room = server.joinPlayer(player);
         room._conns.set(player.id, ws);
 
@@ -242,6 +275,7 @@ function detectTailscale() {
 
 process.on("SIGINT", () => {
   console.log("\n[localagar] shutting down…");
+  accounts.flushAll();
   server.shutdown();
   wss.close();
   httpServer.close(() => process.exit(0));

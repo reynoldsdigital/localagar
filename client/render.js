@@ -6,7 +6,7 @@
 // slightly behind the freshest possible snapshot.
 
 import { Camera } from "./camera.js";
-import { COLORS, massToRadius, INTERP_DELAY_MS } from "../shared/constants.js";
+import { COLORS, PALETTE, massToRadius, INTERP_DELAY_MS } from "../shared/constants.js";
 
 const VIRUS_SPIKES = 20;
 
@@ -150,6 +150,7 @@ export class Renderer {
           this.pellets.set(p.id, {
             x: p.x, y: p.y, m: p.m, e: p.e,
             px: p.x, py: p.y,
+            c: p.e ? null : pelletColorFromId(p.id),
           });
         }
       }
@@ -272,16 +273,50 @@ export class Renderer {
 
     const t = this._interpAlpha();
 
-    // Pellets - render with subpixel precision for smoothness
-    for (const p of this.pellets.values()) {
-      const x = lerp(p.px, p.x, t);
-      const y = lerp(p.py, p.y, t);
-      const [sx, sy] = this._worldToScreen(x, y, w, h);
-      const r = Math.max(2, massToRadius(p.m) * this.camera.zoom);
-      ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      ctx.fillStyle = p.e ? COLORS.PELLET_EJECTED : COLORS.PELLET;
-      ctx.fill();
+    // Pellets — batched by colour (one fill per colour instead of one per
+    // pellet) and culled against the screen for performance. Ambient pellets
+    // are multicoloured (derived from their id); ejected mass is gold.
+    {
+      const zoom = this.camera.zoom;
+      const ox = w / 2 - this.camera.x * zoom;
+      const oy = h / 2 - this.camera.y * zoom;
+      const buckets = new Map();     // color -> flat [sx,sy,r, ...]
+      const ejected = [];            // flat [sx,sy,r, ...]
+      for (const p of this.pellets.values()) {
+        const x = lerp(p.px, p.x, t);
+        const y = lerp(p.py, p.y, t);
+        const r = Math.max(1.5, massToRadius(p.m) * zoom);
+        const sx = x * zoom + ox;
+        const sy = y * zoom + oy;
+        if (sx < -r || sy < -r || sx > w + r || sy > h + r) continue; // cull
+        if (p.e) {
+          ejected.push(sx, sy, r);
+        } else {
+          let arr = buckets.get(p.c);
+          if (!arr) { arr = []; buckets.set(p.c, arr); }
+          arr.push(sx, sy, r);
+        }
+      }
+      for (const [color, arr] of buckets) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        for (let i = 0; i < arr.length; i += 3) {
+          const sx = arr[i], sy = arr[i + 1], r = arr[i + 2];
+          ctx.moveTo(sx + r, sy);
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+      if (ejected.length) {
+        ctx.fillStyle = COLORS.PELLET_EJECTED;
+        ctx.beginPath();
+        for (let i = 0; i < ejected.length; i += 3) {
+          const sx = ejected[i], sy = ejected[i + 1], r = ejected[i + 2];
+          ctx.moveTo(sx + r, sy);
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
     }
 
     // Viruses
@@ -290,6 +325,7 @@ export class Renderer {
       const y = lerp(v.py, v.y, t);
       const [sx, sy] = this._worldToScreen(x, y, w, h);
       const r = massToRadius(v.m) * this.camera.zoom;
+      if (sx < -r || sy < -r || sx > w + r || sy > h + r) continue;
       drawVirus(ctx, sx, sy, r);
     }
 
@@ -303,6 +339,7 @@ export class Renderer {
       const m = lerp(c.pm, c.m, t);
       const [sx, sy] = this._worldToScreen(x, y, w, h);
       const r = massToRadius(m) * this.camera.zoom;
+      if (sx < -r || sy < -r || sx > w + r || sy > h + r) continue;
       const skin = c.s || "solid";
       
       ctx.beginPath();
@@ -470,6 +507,15 @@ function drawVirus(ctx, x, y, r) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+// Deterministic colour for an ambient pellet from its id, so the server
+// doesn't have to send a colour per pellet (bandwidth) yet pellets are
+// still multicoloured across the shared skin palette.
+function pelletColorFromId(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
 }
 
 function lightenColor(hex, percent) {
