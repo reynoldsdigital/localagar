@@ -71,7 +71,7 @@ html, body {
   gap: 8px;
   padding-bottom: 14px;
 }
-#gold-pill .coin { font-weight: 700; margin-right: 2px; }
+#gold-pill .coin { color: var(--gold); font-weight: 800; margin-right: 5px; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; }
 #gold-pill .level-sep { color: var(--muted); opacity: 0.5; }
 #gold-pill .level { color: var(--accent); font-weight: 600; font-size: 13px; }
 #gold-pill #xp-bar {

@@ -140,6 +140,7 @@ let state = {
   xp: 0,
   xpNeeded: 100,
   paused: false,
+  dead: false,
 };
 
 let net, input, renderer;
@@ -148,6 +149,7 @@ let intentionalClose = false;  // true when WE close the socket (don't show an e
 // Disconnect and return to the main menu.
 function exitToMenu() {
   intentionalClose = true;
+  state.dead = false;
   if (net && net.ws) { try { net.ws.close(); } catch (_) {} }
   menu.hidden = false;
   hudEl.hidden = true;
@@ -195,6 +197,7 @@ menuPauseBtn.addEventListener("click", exitToMenu);
 // Death-screen buttons (registered once).
 deathRespawnBtn.addEventListener("click", () => {
   if (net) net.respawn();
+  state.dead = false;
   deathEl.hidden = true;
 });
 deathMenuBtn.addEventListener("click", exitToMenu);
@@ -253,6 +256,7 @@ function startGame({ name, password, mode, clan, skin, color }) {
     state.world = msg.world;
     renderer.setWorld(msg.world);
     // We're in the room — show the game, hide the menu.
+    state.dead = false;
     menu.hidden = true;
     hudEl.hidden = false;
     leaderboardEl.hidden = false;
@@ -338,9 +342,10 @@ setInterval(() => {
     const xpPct = state.xpNeeded > 0 ? (state.xp / state.xpNeeded) * 100 : 0;
     xpFillEl.style.width = `${Math.min(100, xpPct)}%`;
   }
-  // The death screen is shown by the "death" event (with stats) and hidden
-  // again on respawn; here we only clear it if the player is alive.
-  if (state.alive) deathEl.hidden = true;
+  // The death screen is shown by the "death" event and hidden on
+  // respawn / exit. Drive it from state.dead so a stale `alive` flag
+  // (the server sends no `you` to a dead player) can't hide it.
+  deathEl.hidden = !state.dead;
 }, 100);
 
 // Render leaderboard rows
@@ -360,6 +365,8 @@ setInterval(() => {
 // Populate + show the death-review screen.
 function showDeath(msg) {
   if (!msg) return;
+  state.dead = true;          // authoritative: keep the death screen up
+  deathEl.hidden = false;
   const run = msg.run || {};
   const lt = msg.lifetime || {};
   if (deathRunMassEl) deathRunMassEl.textContent = run.maxMass || 0;
