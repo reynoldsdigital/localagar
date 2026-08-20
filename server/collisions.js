@@ -1,11 +1,11 @@
 // Spatial grid for collision broadphase. Cell size should be larger than the
 // largest possible entity (viruses ~ massToRadius(very large)).
 
-import { massToRadius, CELL } from "../shared/constants.js";
+import { massToRadius, CELL, WORLD } from "../shared/constants.js";
 
 const CELL_SIZE = 200;
-const COLS = Math.ceil(12000 / CELL_SIZE);
-const ROWS = Math.ceil(12000 / CELL_SIZE);
+const COLS = Math.ceil(WORLD.WIDTH / CELL_SIZE);
+const ROWS = Math.ceil(WORLD.HEIGHT / CELL_SIZE);
 
 export class SpatialGrid {
   constructor() {

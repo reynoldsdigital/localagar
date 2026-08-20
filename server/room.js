@@ -34,6 +34,7 @@ export class Room {
     this.running = false;
     this._loop = null;
     this._grid = new SpatialGrid();
+    this._pendingRankUps = new Map(); // playerId -> rank-up label (for client toast)
   }
 
   start() {
@@ -49,6 +50,23 @@ export class Room {
 
   hasRoom() {
     return this.players.length < this.cfg.maxPlayers;
+  }
+
+  // Award rank points to a real player for an objective and queue a
+  // rank-up notification if they climbed a division.  Bots are ignored.
+  _awardRank(player, kind) {
+    if (!player || player.isBot) return;
+    const res = player.awardRankPoints(kind);
+    if (res && res.rankedUp) {
+      this._pendingRankUps.set(player.id, res.label);
+    }
+  }
+
+  // Pop (and clear) any pending rank-up notification for a player.
+  _takeRankUp(playerId) {
+    const label = this._pendingRankUps.get(playerId);
+    if (label) this._pendingRankUps.delete(playerId);
+    return label || null;
   }
 
   addPlayer(player) {
@@ -231,6 +249,8 @@ export class Room {
               p.xp += xpGain;
               p.gold += goldGain;
               p.totalMassEaten += other.mass;
+              // Rank points for a real-player kill
+              this._awardRank(p, "kill_player");
               // Check for level up
               const xpNeeded = p.level * 100;
               if (p.xp >= xpNeeded) {
@@ -245,6 +265,8 @@ export class Room {
               p.xp += xpGain;
               p.gold += goldGain;
               p.totalMassEaten += other.mass;
+              // Rank points for a bot kill (counts toward hasEatenPlayer)
+              this._awardRank(p, "kill_bot");
               const xpNeeded = p.level * 100;
               if (p.xp >= xpNeeded) {
                 p.level++;
@@ -315,8 +337,9 @@ export class Room {
           if (c.owner.cells.length >= CELL.MAX_CELLS_PER_PLAYER) {
             // Consume virus: gain +100 mass, no splitting
             c.mass += CELL.VIRUS_MASS_GAIN;
-            // Cap at hard max
             if (c.mass > CELL.HARD_MAX_SIZE) c.mass = CELL.HARD_MAX_SIZE;
+            // Rank points for eating a virus
+            this._awardRank(c.owner, "virus");
             // Virus consumed — relocate to a new spot (avoiding past positions)
             v.relocate(WORLD.WIDTH, WORLD.HEIGHT);
             v.resetAfterSplit();
@@ -342,6 +365,8 @@ export class Room {
               c.owner.targetY = c.y + dy / d * 100;
               splitCell(c, c.owner, this.cfg.splitSpeed);
             }
+            // Rank points for popping a virus
+            this._awardRank(c.owner, "virus");
             // Virus is consumed by the pop — relocate to a new spot
             // (avoiding past positions so it never returns to the exact
             // same spot more than once, like agar.io).
@@ -501,11 +526,12 @@ export class Room {
 
   spendGold(player, key) {
     if (!player.alive) return;
-    if (player.gold <= 0) {
-      // Bots and humans gain gold passively
-      player.gold += 1;
-      return;
-    }
+    // Gold-to-mass is locked until the player has eaten at least one
+    // other player AND banked more than MASS_GATE_MIN_GOLD gold.  This
+    // pushes players to hunt instead of farming pellets for free mass.
+    const unlocked = player.hasEatenPlayer && player.gold > GOLD.MASS_GATE_MIN_GOLD;
+    if (!unlocked) return;
+    if (player.gold <= 0) return;
     player.gold -= 1;
     const amount = key === "s" ? CELL.START_MASS / 2 : CELL.START_MASS / 4;
     for (const c of player.cells) c.mass += amount;
@@ -602,6 +628,26 @@ export class Room {
           level: player.level,
           xp: player.xp,
           xpNeeded: player.level * 100,
+          rank: (() => {
+            const ri = player.getRankInfo();
+            return {
+              divIndex: ri.divIndex,
+              label: ri.label,
+              rank: ri.rank,
+              division: ri.division,
+              progress: ri.progress,
+              currentAt: ri.currentAt,
+              nextAt: ri.nextAt,
+              atTop: ri.atTop,
+              rp: player.rankPoints,
+              kills: player.kills,
+              playerKills: player.playerKills,
+              virusesEaten: player.virusesEaten,
+              hasEatenPlayer: player.hasEatenPlayer,
+              massUnlocked: player.hasEatenPlayer && player.gold > GOLD.MASS_GATE_MIN_GOLD,
+            };
+          })(),
+          rankUp: this._takeRankUp(player.id),
         });
         try { conn.send(msg); } catch (_) {}
         // Leaderboard every other snapshot to save bandwidth

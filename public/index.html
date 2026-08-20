@@ -21,6 +21,13 @@
       <span class="level-sep">|</span>
       <span class="level">Lvl <span id="level">1</span></span>
     </div>
+    <div id="rank-pill" hidden>
+      <span id="rank-icon">B</span>
+      <span id="rank-label">Bronze I</span>
+      <div id="rank-progress" hidden><div id="rank-progress-fill"></div></div>
+      <span id="rank-rp">0/0 RP</span>
+    </div>
+    <div id="mass-gate" class="gate-locked">Gold&rarr;Mass: eat a player to unlock</div>
     <div id="xp-bar"><div id="xp-fill"></div></div>
     <div id="mode-pill"><span id="mode-label">FFA</span></div>
     <div id="help-pill">
@@ -35,6 +42,17 @@
   <aside id="leaderboard" hidden>
     <h3>Leaderboard</h3>
     <ol id="leader-rows"></ol>
+  </aside>
+
+  <!-- Objectives / ranking progress -->
+  <aside id="objectives" hidden>
+    <h3>Objectives</h3>
+    <ul class="obj-list">
+      <li><span class="obj-label">Total kills</span><span class="obj-val" id="obj-kills">0</span></li>
+      <li><span class="obj-label">Player kills</span><span class="obj-val" id="obj-player-kills">0</span></li>
+      <li><span class="obj-label">Viruses eaten</span><span class="obj-val" id="obj-viruses">0</span></li>
+    </ul>
+    <p class="obj-hint">Earn RP from kills &amp; viruses to climb the ranks.</p>
   </aside>
 
   <!-- Minimap -->
@@ -152,13 +170,15 @@
         <li><b>A</b> / <b>S</b> — spend gold to gain mass</li>
         <li>Eat pellets and smaller players to grow</li>
         <li>Avoid viruses (green spiked circles) — they'll split you if you're big</li>
-        <li><b>Gold:</b> Earned passively over time + big rewards for eating players (bigger = more gold)</li>
+        <li><b>Gold:</b> Earned passively + big rewards for eating players. Spend it on mass with <b>A</b>/<b>S</b> — but only after you've eaten a player AND have &gt;10 gold</li>
+        <li><b>Ranks:</b> Bronze &rarr; Silver &rarr; Gold &rarr; Platinum &rarr; Diamond (I/II/III each). Earn RP by eating players &amp; viruses</li>
         <li><b>Colour:</b> Pick your cell colour from the colour palette or use a custom colour</li>
       </ul>
     </details>
   </main>
 
   <noscript>This game requires JavaScript and WebSockets.</noscript>
+  <div id="rank-up-toast"><div class="toast-card"><span class="toast-title">RANK UP!</span><span id="rank-up-label"></span></div></div>
   <div id="diag"></div>
 
   <script type="module" src="/client/main.js"></script>

@@ -1,6 +1,7 @@
 // Bootstraps the game. Wires UI -> net -> input -> render.
 
 import { Net } from "./net.js";
+import { RANKS } from "../shared/ranks.js";
 import { Input } from "./input.js";
 import { Renderer } from "./render.js";
 
@@ -30,6 +31,19 @@ const colorSwatchesEl = document.getElementById("color-swatches");
 const customColorInput = document.getElementById("custom-color-input");
 const skinFieldset = document.getElementById("skin-fieldset");
 const diagEl = document.getElementById("diag");
+const rankPillEl = document.getElementById("rank-pill");
+const rankLabelEl = document.getElementById("rank-label");
+const rankIconEl = document.getElementById("rank-icon");
+const rankProgressEl = document.getElementById("rank-progress");
+const rankProgressFillEl = document.getElementById("rank-progress-fill");
+const rankRpEl = document.getElementById("rank-rp");
+const objectivesEl = document.getElementById("objectives");
+const objKillsEl = document.getElementById("obj-kills");
+const objPlayerKillsEl = document.getElementById("obj-player-kills");
+const objVirusesEl = document.getElementById("obj-viruses");
+const massGateEl = document.getElementById("mass-gate");
+const rankUpToastEl = document.getElementById("rank-up-toast");
+const rankUpLabelEl = document.getElementById("rank-up-label");
 
 // --- Color picker: update skin previews in real time ---
 function getSelectedColor() {
@@ -188,6 +202,7 @@ function startGame({ name, mode, clan, skin, color }) {
     console.log("[main] welcome received", msg);
     state.selfId = msg.selfId;
     state.world = msg.world;
+    renderer.setWorld(msg.world);
     canvas.focus();
     showDiag("Connected", `selfId=${msg.selfId} world=${msg.world.WIDTH}x${msg.world.HEIGHT}`);
     setTimeout(() => hideDiag(), 800);
@@ -286,3 +301,65 @@ function escapeHtml(s) {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[ch]));
 }
+
+
+// ---------------------------------------------------------------------------
+// Ranking / objectives HUD
+// ---------------------------------------------------------------------------
+
+function updateRankHUD() {
+  if (!renderer) return;
+  const r = renderer.getRank();
+  if (!r) {
+    if (rankPillEl) rankPillEl.hidden = true;
+    if (objectivesEl) objectivesEl.hidden = true;
+    return;
+  }
+  if (rankPillEl) rankPillEl.hidden = false;
+  if (objectivesEl) objectivesEl.hidden = false;
+
+  const rankMeta = RANKS[r.rank] || RANKS[0];
+  if (rankLabelEl) rankLabelEl.textContent = r.label;
+  if (rankIconEl) {
+    rankIconEl.textContent = rankMeta.short;
+    rankIconEl.style.background = rankMeta.color;
+    rankIconEl.style.color = (r.rank === 1) ? "#11131a" : "#11131a";
+  }
+  if (rankProgressEl) rankProgressEl.hidden = !!r.atTop;
+  if (rankProgressFillEl) {
+    rankProgressFillEl.style.width = `${Math.round(r.progress * 100)}%`;
+    rankProgressFillEl.style.background = rankMeta.color;
+  }
+  if (rankRpEl) rankRpEl.textContent = r.atTop ? "MAX" : `${r.rp}/${r.nextAt} RP`;
+
+  if (objKillsEl) objKillsEl.textContent = r.kills;
+  if (objPlayerKillsEl) objPlayerKillsEl.textContent = r.playerKills;
+  if (objVirusesEl) objVirusesEl.textContent = r.virusesEaten;
+
+  // Mass-gate indicator: locked until the player has eaten someone AND
+  // banked more than 10 gold.
+  if (massGateEl) {
+    if (r.massUnlocked) {
+      massGateEl.textContent = "Gold→Mass: UNLOCKED";
+      massGateEl.className = "gate-unlocked";
+    } else if (r.hasEatenPlayer) {
+      massGateEl.textContent = "Gold→Mass: need >10 gold";
+      massGateEl.className = "gate-locked";
+    } else {
+      massGateEl.textContent = "Gold→Mass: eat a player to unlock";
+      massGateEl.className = "gate-locked";
+    }
+  }
+
+  // Rank-up toast
+  const up = renderer.getRankUp();
+  if (up && rankUpToastEl) {
+    rankUpLabelEl.textContent = up;
+    rankUpToastEl.classList.add("show");
+  } else if (rankUpToastEl && !up) {
+    rankUpToastEl.classList.remove("show");
+  }
+}
+
+// Run the rank HUD at ~10Hz alongside the existing HUD loop.
+setInterval(updateRankHUD, 100);

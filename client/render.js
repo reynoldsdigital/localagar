@@ -35,7 +35,15 @@ export class Renderer {
     this._lastWorldY = 0;
     this._hasLast = false;
     this.view = { x: 0, y: 0, w: 0, h: 0 };
-    this.world = { WIDTH: 12000, HEIGHT: 12000 };
+    // Progression snapshot data
+    this._gold = 0;
+    this._level = 1;
+    this._xp = 0;
+    this._xpNeeded = 100;
+    this._rank = null;     // { divIndex, label, rank, division, progress, currentAt, nextAt, atTop, rp, kills, playerKills, virusesEaten, hasEatenPlayer, massUnlocked }
+    this._rankUp = null;   // pending rank-up label (string)
+    this._rankUpAt = 0;    // timestamp the rank-up toast appeared
+    this.world = { WIDTH: 16000, HEIGHT: 16000 };
     this._resize();
     window.addEventListener("resize", () => this._resize());
   }
@@ -61,6 +69,11 @@ export class Renderer {
   applyLeaderboard(rows) {
     this.leaderboard = rows || [];
   }
+  setWorld(w) {
+    if (w && typeof w.WIDTH === "number" && typeof w.HEIGHT === "number") {
+      this.world = { WIDTH: w.WIDTH, HEIGHT: w.HEIGHT };
+    }
+  }
   getLeaderboard() { return this.leaderboard; }
 
   applySnapshot(msg) {
@@ -80,6 +93,8 @@ export class Renderer {
     if (msg.level != null) this._level = msg.level;
     if (msg.xp != null) this._xp = msg.xp;
     if (msg.xpNeeded != null) this._xpNeeded = msg.xpNeeded;
+    if (msg.rank != null) this._rank = msg.rank;
+    if (msg.rankUp) { this._rankUp = msg.rankUp; this._rankUpAt = performance.now(); }
     if (msg.you) {
       // Save previous ("from") state for each "you" cell so we can lerp.
       const prevById = new Map();
@@ -189,6 +204,11 @@ export class Renderer {
   getLevel() { return this._level || 1; }
   getXP() { return this._xp || 0; }
   getXPNeeded() { return this._xpNeeded || 100; }
+  getRank() { return this._rank || null; }
+  getRankUp() {
+    if (this._rankUp && (performance.now() - this._rankUpAt) < 4000) return this._rankUp;
+    return null;
+  }
 
   start() {
     const tick = (t) => {

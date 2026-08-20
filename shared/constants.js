@@ -2,8 +2,8 @@
 // Keep this file side-effect-free so it can be imported in both environments.
 
 export const WORLD = Object.freeze({
-  WIDTH: 12000,
-  HEIGHT: 12000,
+  WIDTH: 16000,
+  HEIGHT: 16000,
 });
 
 export const TICK_RATE = 30;            // server ticks per second
@@ -17,7 +17,7 @@ export const CELL = Object.freeze({
   MERGE_MIN_MASS_RATIO: 1.3,  // must be 33% larger to eat split cells (vs 25% for single cells)
   MERGE_BASE_TIME_MS: 30000,  // 30 seconds base merge cooldown
   MERGE_MASS_FACTOR: 0.0233,  // 2.33% of mass added to cooldown
-  DECAY_RATE: 0.002,          // passive mass loss: 0.2% of mass per second (agar.io-style)
+  DECAY_RATE: 0.0008,         // passive mass loss: 0.08% of mass per second (slower, more forgiving)
   DECAY_MIN_RATE: 0,          // minimum flat decay per second (0 = pure percentage)
   DECAY_SIZE_THRESHOLD: 22500,// size where extra severe decay kicks in
   EAT_RATIO: 1.25,            // must be 25% larger in mass to eat another cell
@@ -50,7 +50,7 @@ export const CELL = Object.freeze({
 });
 
 export const PELLET = Object.freeze({
-  COUNT: 4000,
+  COUNT: 7000,
   MASS: 3,
   RADIUS: 7,
   PICKUP_RADIUS: 20,
@@ -58,9 +58,9 @@ export const PELLET = Object.freeze({
 });
 
 export const VIRUS = Object.freeze({
-  COUNT_FFA: 12,
-  COUNT_CFFA: 10,
-  COUNT_EVENT: 24,
+  COUNT_FFA: 18,
+  COUNT_CFFA: 14,
+  COUNT_EVENT: 30,
   MASS: 100,
   RADIUS: 50,
   SPLIT_THRESHOLD: 1.2,        // cell >= 1.2x virus mass gets split into max pieces
@@ -76,7 +76,7 @@ export const MODES = Object.freeze({
 });
 
 export const MODE_CONFIG = Object.freeze({
-  [MODES.FFA]:   { label: "FFA",      maxPlayers: 50, botCount: 8,  virusCount: VIRUS.COUNT_FFA,   growthMul: 1.0, splitSpeed: 1.0 },
+  [MODES.FFA]:   { label: "FFA",      maxPlayers: 60, botCount: 50, virusCount: VIRUS.COUNT_FFA,   growthMul: 1.0, splitSpeed: 1.0 },
   [MODES.CFFA]:  { label: "CFFA",     maxPlayers: 60, botCount: 10, virusCount: VIRUS.COUNT_CFFA,  growthMul: 1.0, splitSpeed: 1.0 },
   [MODES.EVENT]: { label: "Etkinlik", maxPlayers: 80, botCount: 12, virusCount: VIRUS.COUNT_EVENT, growthMul: 1.5, splitSpeed: 1.2 },
 });
@@ -91,6 +91,12 @@ export const GOLD = Object.freeze({
   EAT_BOT_MULTIPLIER: 0.12,   // 12% of eaten bot's mass → gold
   EAT_PLAYER_BONUS: 5,        // flat bonus gold for eating any real player
   LEVEL_UP_BONUS: 50,         // flat bonus gold on level up
+  // --- Gold-to-mass gating ---
+  // Players cannot convert gold into mass until they have actually
+  // eaten at least one other player AND banked more than this much
+  // gold. Encourages hunting instead of farming pellets.
+  MASS_GATE_MIN_GOLD: 10,     // must have strictly more than this much gold
+  MASS_GATE_NEEDS_KILL: true, // must have eaten a player first
 });
 
 export const COLORS = Object.freeze({

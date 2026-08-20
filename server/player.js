@@ -2,6 +2,7 @@
 // A player owns one or more `cells` until they die or split off too much.
 
 import { CELL, CLAN_TAGS, massToRadius, nextId } from "../shared/constants.js";
+import { rankFromPoints, rankLabel, RANK_RP } from "../shared/ranks.js";
 
 let __cellSerial = 0;
 
@@ -46,6 +47,38 @@ export class Player {
     this.xp = 0;                    // experience points
     this.level = 1;                 // player level
     this.totalMassEaten = 0;        // lifetime mass eaten for XP calculation
+    // --- Ranking / objective tracking ---
+    this.kills = 0;                 // number of players (real + bot) eaten
+    this.playerKills = 0;           // real players eaten
+    this.virusesEaten = 0;          // viruses eaten / popped
+    this.rankPoints = 0;            // RP for the competitive ladder
+    this.hasEatenPlayer = false;    // gates gold-to-mass (must eat a player first)
+    this._lastRankDivIndex = 0;     // last division shown to the client (for rank-up events)
+  }
+
+  // Current rank info derived from RP.  Returns the structure from
+  // rankFromPoints plus a human label.
+  getRankInfo() {
+    const info = rankFromPoints(this.rankPoints);
+    info.label = rankLabel(info.divIndex);
+    return info;
+  }
+
+  // Award rank points for an objective.  `kind` is one of
+  // "kill_player" | "kill_bot" | "virus".  Returns the new rank info
+  // plus a `rankedUp` flag so the room can fire a rank-up notification.
+  awardRankPoints(kind) {
+    let rp = 0;
+    if (kind === "kill_player") { rp = RANK_RP.KILL_PLAYER_RP; this.kills++; this.playerKills++; this.hasEatenPlayer = true; }
+    else if (kind === "kill_bot") { rp = RANK_RP.KILL_BOT_RP; this.kills++; this.hasEatenPlayer = true; }
+    else if (kind === "virus") { rp = RANK_RP.VIRUS_RP; this.virusesEaten++; }
+    if (!rp) return null;
+    const before = this._lastRankDivIndex;
+    this.rankPoints += rp;
+    const info = this.getRankInfo();
+    const rankedUp = info.divIndex > before;
+    this._lastRankDivIndex = info.divIndex;
+    return { ...info, rankedUp, awarded: rp };
   }
 
   spawnInto(world, mass = CELL.START_MASS) {
