@@ -227,20 +227,30 @@ export class Renderer {
       // Interpolate the "you" cells so the camera target also moves smoothly.
       const t = this._interpAlpha();
       let cx = 0, cy = 0, totalM = 0;
+      // Bounding box of all your cells (incl. radii) so the camera can zoom
+      // out to fit them after splitting (agar.io-style).
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const c of this.you) {
         const x = lerp(c.px, c.x, t);
         const y = lerp(c.py, c.y, t);
         const m = lerp(c.pm, c.m, t);
         cx += x * m; cy += y * m; totalM += m;
+        const rr = massToRadius(m);
+        if (x - rr < minX) minX = x - rr;
+        if (y - rr < minY) minY = y - rr;
+        if (x + rr > maxX) maxX = x + rr;
+        if (y + rr > maxY) maxY = y + rr;
       }
       if (totalM > 0) {
         cx /= totalM; cy /= totalM;
-        this.camera.setTargetCenter(cx, cy, totalM, window.innerWidth, window.innerHeight);
+        const boxW = Math.max(0, maxX - minX);
+        const boxH = Math.max(0, maxY - minY);
+        this.camera.setTargetCenter(cx, cy, totalM, window.innerWidth, window.innerHeight, boxW, boxH);
         this.camera.step(dt);
         this._lastWorldX = cx; this._lastWorldY = cy; this._hasLast = true;
       }
     } else if (this._hasLast) {
-      this.camera.setTargetCenter(this._lastWorldX, this._lastWorldY, 100, window.innerWidth, window.innerHeight);
+      this.camera.setTargetCenter(this._lastWorldX, this._lastWorldY, 100, window.innerWidth, window.innerHeight, 0, 0);
       this.camera.step(dt);
     }
   }

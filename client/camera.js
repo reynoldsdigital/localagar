@@ -14,17 +14,33 @@ export class Camera {
     this.vx = 0;
     this.vy = 0;
     this.vzoom = 0;
+    this.userZoom = 1.0;        // scroll-wheel zoom multiplier (in-game only)
   }
-  setTargetCenter(cx, cy, mass, viewW, viewH) {
+  setTargetCenter(cx, cy, mass, viewW, viewH, boxW = 0, boxH = 0) {
     this.targetX = cx;
     this.targetY = cy;
-    // The bigger the divisor, the smaller the player appears on screen and
-    // the more of the surrounding world you see. Min zoom is pulled lower so
-    // big cells zoom way out (visible radius approaches a page-width).
+    // Base auto-zoom from total mass (smaller player => more world visible).
     const r = massToRadius(mass);
     const desired = Math.min(viewW, viewH) / (r * 36);
-    this.targetZoom = Math.max(0.15, Math.min(1.15, desired));
+    let zoom = Math.max(0.15, Math.min(1.15, desired));
+    // After splitting your cells spread out; zoom out enough to keep ALL of
+    // them on screen (agar.io-style). This only zooms OUT further than the
+    // mass-based view, never in, so a single cell keeps its normal zoom.
+    if (boxW > 0 && boxH > 0) {
+      const zoomFit = Math.min(viewW / (boxW * 1.35), viewH / (boxH * 1.35));
+      zoom = Math.min(zoom, zoomFit);
+    }
+    // Apply the player's scroll-wheel zoom preference (in-game only).
+    zoom = zoom * this.userZoom;
+    this.targetZoom = Math.max(0.10, Math.min(2.0, zoom));
   }
+
+  // Scroll-wheel zoom: multiply the auto-zoom by a clamped factor.
+  // factor > 1 zooms in, < 1 zooms out.
+  adjustZoom(factor) {
+    this.userZoom = Math.max(0.45, Math.min(2.5, this.userZoom * factor));
+  }
+  resetZoom() { this.userZoom = 1.0; }
   step(dtSec) {
     // --- Zoom: smooth, frame-rate-independent exponential approach (no
     //     overshoot, no jitter). This is the "auto zoom in/out" curve. ---

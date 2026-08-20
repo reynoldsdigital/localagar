@@ -79,14 +79,27 @@ export class Input {
       const k = e.key.toLowerCase();
       if (this._held.has(k)) this._held.delete(k);
     };
+    // Scroll-wheel zoom (in-game only — this listener only exists while
+    // Input is running, i.e. not on the menu). Up = zoom in, down = zoom out.
+    const onWheel = (e) => {
+      const cam = this.renderer && this.renderer.camera;
+      if (!cam) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      cam.adjustZoom(factor);
+    };
     c.addEventListener("mousemove", onMove);
     c.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("wheel", onWheel, { passive: false });
     this._handlers.push(["mousemove", c, onMove]);
     this._handlers.push(["mousedown", c, onDown]);
     this._handlers.push(["keydown", window, onKey]);
     this._handlers.push(["keyup", window, onKeyUp]);
+    this._handlers.push(["wheel", window, onWheel]);
+    // Start each game at the default zoom.
+    if (this.renderer && this.renderer.camera) this.renderer.camera.resetZoom();
 
     // Poll loop: repeats held keys (space split + e/s/w/a actions) at their
     // throttled intervals.
