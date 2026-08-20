@@ -12,24 +12,35 @@
 
   <!-- HUD -->
   <div id="hud" hidden>
-    <div id="score-pill">
-      <span id="score">0</span>
-      <span id="rank">#1</span>
-    </div>
+    <!-- Top-left: Gold + Level -->
     <div id="gold-pill">
       <span class="coin">$</span><span id="gold">0</span>
       <span class="level-sep">|</span>
       <span class="level">Lvl <span id="level">1</span></span>
+      <div id="xp-bar"><div id="xp-fill"></div></div>
     </div>
+
+    <!-- Top-center: Score + leaderboard rank + mode -->
+    <div id="score-pill">
+      <span id="score">0</span>
+      <span id="rank">#1</span>
+      <span id="mode-label" class="mode-tag">FFA</span>
+    </div>
+
+    <!-- Top-right: Competitive rank -->
     <div id="rank-pill" hidden>
       <span id="rank-icon">B</span>
-      <span id="rank-label">Bronze I</span>
-      <div id="rank-progress" hidden><div id="rank-progress-fill"></div></div>
-      <span id="rank-rp">0/0 RP</span>
+      <div class="rank-text">
+        <span id="rank-label">Bronze I</span>
+        <div id="rank-progress" hidden><div id="rank-progress-fill"></div></div>
+        <span id="rank-rp">0/0 RP</span>
+      </div>
     </div>
+
+    <!-- Mass-gate status -->
     <div id="mass-gate" class="gate-locked">Gold&rarr;Mass: eat a player to unlock</div>
-    <div id="xp-bar"><div id="xp-fill"></div></div>
-    <div id="mode-pill"><span id="mode-label">FFA</span></div>
+
+    <!-- Controls -->
     <div id="help-pill">
       <small>ESC:pause</small>
       <small>Space:split</small>

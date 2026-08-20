@@ -49,7 +49,8 @@ html, body {
   inset: 0;
   pointer-events: none;
 }
-#score-pill, #gold-pill, #mode-pill, #help-pill {
+/* Shared pill look, evenly distributed around the screen edges. */
+#score-pill, #gold-pill, #rank-pill, #help-pill, #mass-gate {
   position: absolute;
   padding: 8px 14px;
   background: rgba(0, 0, 0, 0.45);
@@ -59,16 +60,8 @@ html, body {
   font-size: 16px;
   backdrop-filter: blur(4px);
 }
-#score-pill {
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-}
-#score-pill #score { font-size: 22px; color: var(--fg); }
-#score-pill #rank   { font-size: 14px; color: var(--muted); }
+
+/* Top-left: Gold + Level, with the XP bar tucked under it */
 #gold-pill {
   top: 16px;
   left: 16px;
@@ -76,33 +69,107 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-bottom: 14px;
 }
 #gold-pill .coin { font-weight: 700; margin-right: 2px; }
 #gold-pill .level-sep { color: var(--muted); opacity: 0.5; }
 #gold-pill .level { color: var(--accent); font-weight: 600; font-size: 13px; }
-
-/* XP bar */
-#xp-bar {
+#gold-pill #xp-bar {
   position: absolute;
-  top: -6px;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: rgba(255,255,255,0.1);
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
   overflow: hidden;
 }
-#xp-fill {
+#gold-pill #xp-fill {
   height: 100%;
   width: 0%;
   background: linear-gradient(90deg, var(--accent), #7fdbff);
+  border-radius: 2px;
   transition: width 0.3s ease;
 }
-#mode-pill {
+
+/* Top-center: Score + leaderboard rank + mode */
+#score-pill {
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+#score-pill #score { font-size: 22px; color: var(--fg); }
+#score-pill #rank  { font-size: 14px; color: var(--muted); }
+#score-pill .mode-tag {
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  padding-left: 10px;
+  margin-left: 2px;
+}
+
+/* Top-right: Competitive rank badge + division + RP progress */
+#rank-pill {
   top: 16px;
   right: 16px;
-  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
+#rank-pill #rank-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  background: #cd7f32;
+  color: #11131a;
+  flex: 0 0 auto;
+}
+#rank-pill .rank-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 110px;
+}
+#rank-pill #rank-label { color: var(--fg); font-size: 14px; font-weight: 700; }
+#rank-pill #rank-progress {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#rank-pill #rank-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #cd7f32;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+#rank-pill #rank-rp { font-size: 10px; color: var(--muted); font-weight: 600; }
+
+/* Mass-gate status — bottom-left */
+#mass-gate {
+  bottom: 16px;
+  left: 16px;
+  top: auto;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Controls — bottom-center */
 #help-pill {
   bottom: 16px;
   left: 50%;
@@ -116,7 +183,7 @@ html, body {
 /* ---- Leaderboard ---- */
 #leaderboard {
   position: fixed;
-  top: 64px;
+  top: 84px;
   right: 16px;
   width: 200px;
   background: rgba(0, 0, 0, 0.55);
@@ -503,69 +570,7 @@ noscript {
 #diag strong { color: var(--danger); display: block; margin-bottom: 4px; }
 #diag code { background: rgba(0,0,0,0.4); padding: 1px 4px; border-radius: 3px; }
 
-/* ---- Rank pill (HUD) ---- */
-#rank-pill {
-  position: absolute;
-  top: 60px;
-  left: 16px;
-  padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.45);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  font-weight: 700;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  backdrop-filter: blur(4px);
-}
-#rank-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 800;
-  background: #cd7f32;
-  color: #11131a;
-  flex: 0 0 auto;
-}
-#rank-label { color: var(--fg); }
-#rank-progress {
-  position: relative;
-  width: 90px;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-  overflow: hidden;
-}
-#rank-progress-fill {
-  height: 100%;
-  width: 0%;
-  background: #cd7f32;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-#rank-rp {
-  font-size: 11px;
-  color: var(--muted);
-  font-weight: 600;
-}
-
 /* ---- Mass-gate indicator (HUD) ---- */
-#mass-gate {
-  position: absolute;
-  top: 92px;
-  left: 16px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  backdrop-filter: blur(4px);
-}
 #mass-gate.gate-locked {
   background: rgba(255, 107, 107, 0.18);
   color: #ffb3b3;
@@ -577,14 +582,11 @@ noscript {
   border: 1px solid rgba(78, 205, 196, 0.5);
 }
 
-/* ---- Objectives panel ---- */
-/*#objectives {
-  position: fixed;
-  top: 230px;*/
+/* ---- Objectives panel (left side, below the gold pill) ---- */
 #objectives {
   position: fixed;
-  top: 330px;
-  right: 16px;
+  top: 84px;
+  left: 16px;
   width: 200px;
   background: rgba(0, 0, 0, 0.55);
   border-radius: var(--radius);
@@ -657,7 +659,7 @@ noscript {
 
 /* On small screens, tuck the objectives panel under the leaderboard */
 @media (max-height: 620px) {
-  #objectives { top: 460px; }
+  #objectives { top: 84px; left: 16px; right: auto; }
 }
 
 /* ---- Login form (password / remember) ---- */

@@ -144,9 +144,11 @@ let state = {
 };
 
 let net, input, renderer;
+let intentionalClose = false;  // true when WE close the socket (don't show an error)
 
 // Disconnect and return to the main menu.
 function exitToMenu() {
+  intentionalClose = true;
   if (net && net.ws) { try { net.ws.close(); } catch (_) {} }
   menu.hidden = false;
   hudEl.hidden = true;
@@ -251,9 +253,14 @@ function startGame({ name, password, mode, clan, skin, color }) {
     state.selfId = msg.selfId;
     state.world = msg.world;
     renderer.setWorld(msg.world);
+    // We're in the room — show the game, hide the menu.
+    menu.hidden = true;
+    hudEl.hidden = false;
+    leaderboardEl.hidden = false;
+    minimapEl.hidden = false;
+    deathEl.hidden = true;
+    pauseMenuEl.hidden = true;
     canvas.focus();
-    showDiag("Connected", `selfId=${msg.selfId} world=${msg.world.WIDTH}x${msg.world.HEIGHT}`);
-    setTimeout(() => hideDiag(), 800);
   });
   net.on("snapshot", (msg) => renderer.applySnapshot(msg));
   net.on("leaderboard", (msg) => renderer.applyLeaderboard(msg.rows));
@@ -267,14 +274,17 @@ function startGame({ name, password, mode, clan, skin, color }) {
   net.on("login_fail", (msg) => {
     console.warn("[main] login failed", msg && msg.reason);
     if (loginErrEl) loginErrEl.textContent = (msg && msg.reason) || "Login failed";
-    showDiag("Login failed", (msg && msg.reason) || "Login failed");
+    // Stay on the menu; the inline error explains what happened.
+    // (Mark the close intentional so the close handler doesn't pop a
+    //  red "Disconnected" banner for a deliberate exit.)
+    intentionalClose = true;
     try { if (net && net.ws) net.ws.close(); } catch (_) {}
-    exitToMenu();
+    menu.hidden = false;
+    hudEl.hidden = true;
   });
   net.on("open", () => {
     console.log("[main] ws open, sending login");
     net.login(name, password);
-    showDiag("Connecting…", "Logging in…");
   });
   net.on("error", (e) => {
     console.warn("[main] ws error", e);
