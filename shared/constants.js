@@ -57,6 +57,10 @@ export const PELLET = Object.freeze({
   RADIUS: 7,
   PICKUP_RADIUS: 20,
   EJECTED_PICKUP_RADIUS: 28,
+  // Cap on ambient pellets sent per snapshot so very large viewports
+  // (big cells) don't flood the client with thousands of pellets — the
+  // main cause of "the bigger I get, the slower it gets".
+  MAX_PER_SNAPSHOT: 1000,
 });
 
 export const VIRUS = Object.freeze({

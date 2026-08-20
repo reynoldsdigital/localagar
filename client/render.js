@@ -331,7 +331,8 @@ export class Renderer {
 
     // Cells — sorted so big ones draw first (smaller on top of bigger)
     const cells = [...this.cells.values()];
-    cells.sort((a, b) => b.m - a.m);
+    // Smaller cells first, larger last so the larger-mass cell renders ON TOP.
+    cells.sort((a, b) => a.m - b.m);
     const youSet = new Set(this.you.map(y => y.id));
     for (const c of cells) {
       const x = lerp(c.px, c.x, t);
@@ -408,17 +409,21 @@ export class Renderer {
         ctx.strokeStyle = "rgba(255,255,255,0.78)";
         ctx.stroke();
       }
-      const fontSize = Math.max(10, Math.min(28, r * 0.55));
-      ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
-      ctx.fillStyle = "#fff";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.shadowColor = "rgba(0,0,0,0.6)";
-      ctx.shadowBlur = 4;
-      ctx.fillText(c.n || "", sx, sy - fontSize * 0.4);
-      ctx.font = `500 ${fontSize * 0.7}px ui-sans-serif, system-ui, sans-serif`;
-      ctx.fillText(String(Math.floor(m)), sx, sy + fontSize * 0.35);
-      ctx.shadowBlur = 0;
+      // Only label cells big enough on screen to read — text rendering is
+      // expensive and far-away cells are sub-pixel anyway.
+      if (r >= 13) {
+        const fontSize = Math.max(10, Math.min(28, r * 0.55));
+        ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowColor = "rgba(0,0,0,0.6)";
+        ctx.shadowBlur = 4;
+        ctx.fillText(c.n || "", sx, sy - fontSize * 0.4);
+        ctx.font = `500 ${fontSize * 0.7}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.fillText(String(Math.floor(m)), sx, sy + fontSize * 0.35);
+        ctx.shadowBlur = 0;
+      }
     }
 
     this._drawMinimap();

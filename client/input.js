@@ -12,10 +12,25 @@ export class Input {
     this.mouseY = 0;
     this._running = false;
     this._handlers = [];
+    // Space (split) hold state
     this._spaceHeld = false;
     this._spaceHoldStart = 0;
     this._lastSplitSent = 0;
+    // Hold-to-repeat action keys (e, s, w, a). Each maps to a minimum
+    // interval between repeats (ms). Holding the key keeps firing the action.
+    this._held = new Map();          // key -> lastSent timestamp
+    this._repeatMs = { e: 120, s: 150, w: 160, a: 160 };
   }
+
+  // Fire the action bound to a key once.
+  _doAction(k) {
+    if (!this.net) return;
+    if (k === "e") this.net.eject("e");
+    else if (k === "s") this.net.gold("s");
+    else if (k === "w") this.net.eject("w");
+    else if (k === "a") this.net.gold("a");
+  }
+
   start() {
     this._running = true;
     const c = this.canvas;
@@ -23,14 +38,10 @@ export class Input {
       const r = c.getBoundingClientRect();
       this.mouseX = e.clientX - r.left;
       this.mouseY = e.clientY - r.top;
-      // Read camera state from the renderer so input follows the view.
       const cam = this.renderer?.camera;
       const camX = cam ? cam.x : 0;
       const camY = cam ? cam.y : 0;
       const zoom = cam ? cam.zoom : 1;
-      // Mouse pixel -> world coordinates. The world is centered on the
-      // viewport, so we subtract the viewport center, divide by zoom, and
-      // add the camera position.
       const wx = (this.mouseX - r.width / 2) / zoom + camX;
       const wy = (this.mouseY - r.height / 2) / zoom + camY;
       this.net.sendInput(wx, wy);
@@ -43,26 +54,30 @@ export class Input {
         if (!e.repeat && !this._spaceHeld) {
           this._spaceHeld = true;
           this._spaceHoldStart = Date.now();
-          // Send initial split
           this.net.split();
           this._lastSplitSent = Date.now();
         }
         e.preventDefault();
-      } else if (e.repeat) {
         return;
-      } else {
-        switch (e.key.toLowerCase()) {
-          case "w": this.net.eject("w"); break;
-          case "e": this.net.eject("e"); break;
-          case "a": this.net.gold("a"); break;
-          case "s": this.net.gold("s"); break;
+      }
+      const k = e.key.toLowerCase();
+      if (k in this._repeatMs) {
+        // Begin a hold: fire immediately, then the poll loop repeats it
+        // while the key stays down. Ignore the browser's own key repeats.
+        if (!e.repeat && !this._held.has(k)) {
+          this._doAction(k);
+          this._held.set(k, Date.now());
         }
+        e.preventDefault();
       }
     };
     const onKeyUp = (e) => {
       if (e.key === ' ' || e.key === 'Spacebar') {
         this._spaceHeld = false;
+        return;
       }
+      const k = e.key.toLowerCase();
+      if (this._held.has(k)) this._held.delete(k);
     };
     c.addEventListener("mousemove", onMove);
     c.addEventListener("mousedown", onDown);
@@ -72,15 +87,23 @@ export class Input {
     this._handlers.push(["mousedown", c, onDown]);
     this._handlers.push(["keydown", window, onKey]);
     this._handlers.push(["keyup", window, onKeyUp]);
-    
-    // Poll for held spacebar splits
+
+    // Poll loop: repeats held keys (space split + e/s/w/a actions) at their
+    // throttled intervals.
     this._holdInterval = setInterval(() => {
+      const now = Date.now();
+      // Space
       if (this._spaceHeld && this.net) {
-        const holdDuration = Date.now() - this._spaceHoldStart;
-        // Send additional splits while holding (every 150ms after initial)
-        if (holdDuration > 150 && Date.now() - this._lastSplitSent > 150) {
+        if (now - this._spaceHoldStart > 150 && now - this._lastSplitSent > 150) {
           this.net.split();
-          this._lastSplitSent = Date.now();
+          this._lastSplitSent = now;
+        }
+      }
+      // Held action keys
+      for (const [k, last] of this._held) {
+        if (now - last >= this._repeatMs[k]) {
+          this._doAction(k);
+          this._held.set(k, now);
         }
       }
     }, 50);
@@ -89,6 +112,7 @@ export class Input {
     for (const [type, target, fn] of this._handlers) target.removeEventListener(type, fn);
     if (this._holdInterval) clearInterval(this._holdInterval);
     this._handlers = [];
+    this._held.clear();
     this._running = false;
   }
   setRenderer(r) {

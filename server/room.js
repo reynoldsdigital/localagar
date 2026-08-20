@@ -343,7 +343,24 @@ export class Room {
             e.feed(CELL.EJECT_MASS_GAIN, e.x - pvx, e.y - pvy);
             pellet._dead = true;
             eaten = true;
-            if (e.canShoot()) e.shoot(pvx, pvy);
+            if (e.canShoot()) {
+              // DUPLICATE: spawn a new virus that flies out in the feed
+              // direction (the original stays put and resets). Capped so
+              // the arena doesn't fill with viruses indefinitely.
+              if (this.viruses.length < this.cfg.virusCount + 10) {
+                const dm = Math.hypot(pvx, pvy) || 1;
+                const nx = pvx / dm, ny = pvy / dm;
+                const child = new Virus(
+                  clampX(e.x + nx * (e.radius + 12)),
+                  clampY(e.y + ny * (e.radius + 12)),
+                  VIRUS.MASS,
+                );
+                child.vx = nx * VIRUS.SHOOT_SPEED;
+                child.vy = ny * VIRUS.SHOOT_SPEED;
+                this.viruses.push(child);
+              }
+              e.shoot();
+            }
             break;
           }
         }
@@ -624,7 +641,7 @@ export class Room {
       this._grid.query(cx, cy, r + 200, nearby);
 
       const cells = [];
-      const pellets = [];
+      let pellets = [];
       const viruses = [];
       const seen = new Set();
       for (const e of nearby) {
@@ -653,6 +670,17 @@ export class Room {
           if (e.x < viewMinX || e.x > viewMaxX || e.y < viewMinY || e.y > viewMaxY) continue;
           viruses.push({ id: e.id, x: e.x, y: e.y, m: e.mass });
         }
+      }
+
+      // Cap ambient pellets per snapshot (stable thinning by id) so big
+      // viewports don't flood the client. Ejected mass is always kept.
+      if (pellets.length > PELLET.MAX_PER_SNAPSHOT) {
+        const step = Math.ceil(pellets.length / PELLET.MAX_PER_SNAPSHOT);
+        const kept = [];
+        for (const pl of pellets) {
+          if (pl.e || (hashId(pl.id) % step === 0)) kept.push(pl);
+        }
+        pellets = kept;
       }
 
       const you = player.cells.map(c => ({ id: c.id, x: c.x, y: c.y, m: c.mass }));
@@ -711,3 +739,10 @@ export class Room {
 
 function clampX(x) { return x < 0 ? 0 : x > WORLD.WIDTH ? WORLD.WIDTH : x; }
 function clampY(y) { return y < 0 ? 0 : y > WORLD.HEIGHT ? WORLD.HEIGHT : y; }
+// Stable 32-bit hash of an entity id (used to thin pellets consistently
+// across frames so the same pellets stay visible until the viewport changes).
+function hashId(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h;
+}

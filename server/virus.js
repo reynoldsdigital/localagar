@@ -45,16 +45,14 @@ export class Virus {
     this.mass += amount;
     this.feedCount++;
     this.lastFedAt = Date.now();
-    // Push back in direction of feeder for visual feedback + a small
-    // physical nudge so the virus visibly slides as you feed it.
+    // Visual bounce toward the feed direction only — the original virus
+    // stays in place; duplication (a new flying virus) is handled by the
+    // room when the feed threshold is reached.
     const dx = this.x - fromX;
     const dy = this.y - fromY;
     const d = Math.hypot(dx, dy) || 1;
-    const nx = dx / d, ny = dy / d;
-    this.bounces.push({ dx: nx, dy: ny, at: Date.now() });
+    this.bounces.push({ dx: dx / d, dy: dy / d, at: Date.now() });
     if (this.bounces.length > 8) this.bounces.shift();
-    this.vx += nx * VIRUS.FEED_NUDGE;
-    this.vy += ny * VIRUS.FEED_NUDGE;
   }
   step(dt) {
     this.angle += 0.5 * dt;
@@ -83,15 +81,14 @@ export class Virus {
   canShoot() {
     return this.feedCount >= this.feedThreshold && this.mass >= VIRUS.MASS;
   }
-  // Launch the virus in a direction (it flies, then settles).
-  shoot(dirX, dirY) {
-    const d = Math.hypot(dirX, dirY) || 1;
-    this.vx = (dirX / d) * VIRUS.SHOOT_SPEED;
-    this.vy = (dirY / d) * VIRUS.SHOOT_SPEED;
+  // Reset the original virus in place after it has duplicated (the room
+  // creates the new flying virus). The original keeps its position.
+  shoot() {
     this.feedCount = 0;
     this.mass = VIRUS.MASS;
+    this.vx = 0;
+    this.vy = 0;
     this.feedThreshold = rollFeedThreshold();
-    this._recordPosition();
   }
   resetAfterSplit() {
     this.feedCount = 0;
