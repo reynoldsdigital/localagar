@@ -16,7 +16,6 @@ const respawnBtn = document.getElementById("respawn-btn");
 const resumePauseBtn = document.getElementById("resume-pause-btn");
 const menuPauseBtn = document.getElementById("menu-pause-btn");
 const scoreEl = document.getElementById("score");
-const rankEl = document.getElementById("rank");
 const goldEl = document.getElementById("gold");
 const levelEl = document.getElementById("level");
 const xpFillEl = document.getElementById("xp-fill");
@@ -326,14 +325,12 @@ function hideDiag() {
 setInterval(() => {
   if (!renderer) return;
   state.score = renderer.totalMass();
-  state.rank = renderer.getRank();
   state.alive = renderer.isAlive();
   state.gold = renderer.getGold();
   state.level = renderer.getLevel();
   state.xp = renderer.getXP();
   state.xpNeeded = renderer.getXPNeeded();
   scoreEl.textContent = Math.floor(state.score);
-  rankEl.textContent = "#" + (state.rank || "—");
   goldEl.textContent = state.gold | 0;
   levelEl.textContent = state.level | 1;
   // Update XP bar
@@ -400,7 +397,7 @@ function escapeHtml(s) {
 
 function updateRankHUD() {
   if (!renderer) return;
-  const r = renderer.getRank();
+  const r = renderer.getRankInfo();
   if (!r) {
     if (rankPillEl) rankPillEl.hidden = true;
     if (objectivesEl) objectivesEl.hidden = true;

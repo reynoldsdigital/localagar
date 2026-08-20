@@ -205,7 +205,7 @@ export class Renderer {
   getLevel() { return this._level || 1; }
   getXP() { return this._xp || 0; }
   getXPNeeded() { return this._xpNeeded || 100; }
-  getRank() { return this._rank || null; }
+  getRankInfo() { return this._rank || null; }
   getRankUp() {
     if (this._rankUp && (performance.now() - this._rankUpAt) < 4000) return this._rankUp;
     return null;
@@ -341,36 +341,39 @@ export class Renderer {
       const r = massToRadius(m) * this.camera.zoom;
       if (sx < -r || sy < -r || sx > w + r || sy > h + r) continue;
       const skin = c.s || "solid";
-      
+      const base = c.c || "#888";
+
       ctx.beginPath();
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      
-      // Draw cell with skin pattern
+
+      // Draw the cell body with the chosen skin. Patterns are made high
+      // contrast so striped / dotted / gradient read clearly even when small.
       if (skin === "striped") {
         ctx.save();
-        ctx.clip();
-        const stripeSpacing = Math.max(4, r * 0.15);
-        const gradient = ctx.createLinearGradient(sx - r, sy - r, sx + r, sy + r);
-        const baseColor = c.c || "#888";
-        gradient.addColorStop(0, baseColor);
-        gradient.addColorStop(0.5, lightenColor(baseColor, 20));
-        gradient.addColorStop(1, baseColor);
-        ctx.fillStyle = gradient;
-        ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+        ctx.fillStyle = base;
+        ctx.fill();                 // base disc
+        ctx.clip();                  // confine stripes to the circle
+        ctx.translate(sx, sy);
+        ctx.rotate(Math.PI / 4);     // diagonal stripes
+        const stripe = Math.max(6, r * 0.22);
+        ctx.fillStyle = darkenColor(base, 32);
+        for (let off = -r * 2; off < r * 2; off += stripe * 2) ctx.fillRect(off, -r * 2, stripe, r * 4);
+        ctx.fillStyle = lightenColor(base, 20);
+        for (let off = -r * 2 + stripe; off < r * 2; off += stripe * 2) ctx.fillRect(off, -r * 2, stripe, r * 4);
         ctx.restore();
       } else if (skin === "dotted") {
         ctx.save();
+        ctx.fillStyle = darkenColor(base, 20);
+        ctx.fill();                 // darker base
         ctx.clip();
-        ctx.fillStyle = c.c || "#888";
-        ctx.fill();
-        const dotSpacing = Math.max(6, r * 0.25);
-        const dotRadius = Math.max(1, r * 0.08);
-        ctx.fillStyle = "rgba(0,0,0,0.15)";
-        for (let dx = -r; dx < r; dx += dotSpacing) {
-          for (let dy = -r; dy < r; dy += dotSpacing) {
-            if (dx * dx + dy * dy < r * r * 0.8) {
+        const spacing = Math.max(7, r * 0.26);
+        const dr = Math.max(1.5, r * 0.12);
+        ctx.fillStyle = lightenColor(base, 40);
+        for (let dx = -r; dx < r; dx += spacing) {
+          for (let dy = -r; dy < r; dy += spacing) {
+            if (dx * dx + dy * dy < r * r * 0.82) {
               ctx.beginPath();
-              ctx.arc(sx + dx, sy + dy, dotRadius, 0, Math.PI * 2);
+              ctx.arc(sx + dx, sy + dy, dr, 0, Math.PI * 2);
               ctx.fill();
             }
           }
@@ -379,21 +382,30 @@ export class Renderer {
       } else if (skin === "gradient") {
         ctx.save();
         ctx.clip();
-        const grad = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r);
-        grad.addColorStop(0, lightenColor(c.c || "#888", 25));
-        grad.addColorStop(1, c.c || "#888");
+        const grad = ctx.createRadialGradient(sx - r * 0.35, sy - r * 0.35, r * 0.05, sx, sy, r * 1.1);
+        grad.addColorStop(0, lightenColor(base, 48));   // bright highlight
+        grad.addColorStop(0.55, base);
+        grad.addColorStop(1, darkenColor(base, 38));   // deep edge
         ctx.fillStyle = grad;
-        ctx.fill();
+        ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
         ctx.restore();
       } else {
         // Solid (default)
-        ctx.fillStyle = c.c || "#888";
+        ctx.fillStyle = base;
         ctx.fill();
       }
-      
+
+      // Subtle dark outline on every cell for definition.
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(1.5, 2.5 * this.camera.zoom);
+      ctx.strokeStyle = "rgba(0,0,0,0.30)";
+      ctx.stroke();
+
+      // Your own cells get a brighter ring on top.
       if (youSet.has(c.id)) {
         ctx.lineWidth = Math.max(2, 4 * this.camera.zoom);
-        ctx.strokeStyle = "rgba(255,255,255,0.7)";
+        ctx.strokeStyle = "rgba(255,255,255,0.78)";
         ctx.stroke();
       }
       const fontSize = Math.max(10, Math.min(28, r * 0.55));
@@ -516,6 +528,16 @@ function pelletColorFromId(id) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
+}
+
+function darkenColor(hex, percent) {
+  const num = parseInt(hex.replace("#", ""), 16);
+  let r = (num >> 16) & 0xff, g = (num >> 8) & 0xff, b = num & 0xff;
+  const f = percent / 100;
+  r = Math.max(0, Math.floor(r * (1 - f)));
+  g = Math.max(0, Math.floor(g * (1 - f)));
+  b = Math.max(0, Math.floor(b * (1 - f)));
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
 function lightenColor(hex, percent) {

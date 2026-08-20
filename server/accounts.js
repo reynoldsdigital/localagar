@@ -94,7 +94,7 @@ export function savePlayer(player) {
   acc.hasEatenPlayer = !!player.hasEatenPlayer;
   acc.bestScore = Math.max(acc.bestScore || 0, player.bestScore || 0, player.runMaxMass || 0);
   acc.lastSeen = Date.now();
-  scheduleFlush();
+  flushNow();
 }
 
 // Apply a saved account's stats to a freshly created player (before they

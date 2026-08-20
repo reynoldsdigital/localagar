@@ -273,10 +273,13 @@ function detectTailscale() {
   return null;
 }
 
-process.on("SIGINT", () => {
-  console.log("\n[localagar] shutting down…");
+function shutdown(signal) {
+  console.log(`\n[localagar] ${signal} received, shutting down…`);
   accounts.flushAll();
   server.shutdown();
   wss.close();
   httpServer.close(() => process.exit(0));
-});
+}
+process.on("SIGINT",  () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGHUP",  () => shutdown("SIGHUP"));

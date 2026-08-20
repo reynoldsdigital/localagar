@@ -69,6 +69,15 @@ export const VIRUS = Object.freeze({
   MAX_CHILDREN: 8,
   FEED_GROW: 14,               // mass required to grow a virus by 1
   PUSH_SPEED: 12,              // bounce speed applied to viruses when fed
+  // Feeding a virus with ejected mass: it absorbs each pellet, nudges in the
+  // direction it was fed, and once it has eaten a RANDOM number of pellets in
+  // this range it "shoots" — launching itself toward where you aimed (and can
+  // pop another player it flies into). Threshold is re-rolled after each shot.
+  FEED_MIN: 10,
+  FEED_MAX: 15,
+  FEED_NUDGE: 6,               // small velocity kick per pellet fed
+  SHOOT_SPEED: 42,             // launch speed when a virus shoots
+  SHOOT_FRICTION: 0.95,        // per-tick velocity decay while flying
 });
 
 export const MODES = Object.freeze({

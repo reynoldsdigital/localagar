@@ -16,6 +16,11 @@ let __serial = 0;
 const MIN_RESPAWN_DISTANCE = 500;
 const MAX_PAST_POSITIONS = 20;     // ring-buffer cap
 
+// Random pellet count in [FEED_MIN, FEED_MAX] before a virus shoots.
+function rollFeedThreshold() {
+  return VIRUS.FEED_MIN + Math.floor(Math.random() * (VIRUS.FEED_MAX - VIRUS.FEED_MIN + 1));
+}
+
 export class Virus {
   constructor(x, y, mass = VIRUS.MASS) {
     this.id = nextId("v");
@@ -25,39 +30,75 @@ export class Virus {
     this.angle = Math.random() * Math.PI * 2;
     this.serial = ++__serial;
     this.bounces = []; // visual only — {t, dir} pop animation on feed
-    this.feedCount = 0; // number of times fed by players
+    this.feedCount = 0; // number of pellets eaten since last reset
+    this.feedThreshold = rollFeedThreshold(); // pellets needed before it shoots
     this.lastFedAt = 0;
+    this.vx = 0;            // velocity when shot/launched
+    this.vy = 0;
     this.pastPositions = []; // [{x, y}, …] — spots this virus has occupied
   }
+
+  // Random 10–15 pellet threshold before this virus shoots.
+  static rollThreshold() { return rollFeedThreshold(); }
   get radius() { return massToRadius(this.mass); }
   feed(amount, fromX, fromY) {
     this.mass += amount;
     this.feedCount++;
     this.lastFedAt = Date.now();
-    // Push back in direction of feeder for visual feedback
+    // Push back in direction of feeder for visual feedback + a small
+    // physical nudge so the virus visibly slides as you feed it.
     const dx = this.x - fromX;
     const dy = this.y - fromY;
     const d = Math.hypot(dx, dy) || 1;
-    this.bounces.push({ dx: dx / d, dy: dy / d, at: Date.now() });
+    const nx = dx / d, ny = dy / d;
+    this.bounces.push({ dx: nx, dy: ny, at: Date.now() });
     if (this.bounces.length > 8) this.bounces.shift();
+    this.vx += nx * VIRUS.FEED_NUDGE;
+    this.vy += ny * VIRUS.FEED_NUDGE;
   }
   step(dt) {
-    // Tiny wobble + bounce recovery
     this.angle += 0.5 * dt;
     const now = Date.now();
     this.bounces = this.bounces.filter(b => now - b.at < 220);
     // Reset feed count if not fed recently (decay after 10 seconds)
-    if (now - this.lastFedAt > 10000) {
+    if (now - this.lastFedAt > 10000 && this.feedCount !== 0) {
       this.feedCount = 0;
     }
+    // Fly when shot (velocity from shoot()). Friction slows it until it
+    // settles and becomes a normal stationary virus again.
+    if (this.vx || this.vy) {
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      const fr = Math.pow(VIRUS.SHOOT_FRICTION, dt);
+      this.vx *= fr;
+      this.vy *= fr;
+      if (Math.hypot(this.vx, this.vy) < 0.3) { this.vx = 0; this.vy = 0; }
+      if (this.x < 0) { this.x = 0; this.vx = 0; }
+      if (this.y < 0) { this.y = 0; this.vy = 0; }
+      if (this.x > WORLD.WIDTH) { this.x = WORLD.WIDTH; this.vx = 0; }
+      if (this.y > WORLD.HEIGHT) { this.y = WORLD.HEIGHT; this.vy = 0; }
+    }
   }
-  canCreateOffspring() {
-    // Can create offspring after being fed 7 times
-    return this.feedCount >= 7 && this.mass >= VIRUS.MASS;
+  // True once the virus has eaten its (random) pellet threshold.
+  canShoot() {
+    return this.feedCount >= this.feedThreshold && this.mass >= VIRUS.MASS;
+  }
+  // Launch the virus in a direction (it flies, then settles).
+  shoot(dirX, dirY) {
+    const d = Math.hypot(dirX, dirY) || 1;
+    this.vx = (dirX / d) * VIRUS.SHOOT_SPEED;
+    this.vy = (dirY / d) * VIRUS.SHOOT_SPEED;
+    this.feedCount = 0;
+    this.mass = VIRUS.MASS;
+    this.feedThreshold = rollFeedThreshold();
+    this._recordPosition();
   }
   resetAfterSplit() {
     this.feedCount = 0;
     this.mass = VIRUS.MASS;
+    this.vx = 0;
+    this.vy = 0;
+    this.feedThreshold = rollFeedThreshold();
   }
 
   // Relocate this virus to a new random position, avoiding all previously

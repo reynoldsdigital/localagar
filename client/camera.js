@@ -18,56 +18,52 @@ export class Camera {
   setTargetCenter(cx, cy, mass, viewW, viewH) {
     this.targetX = cx;
     this.targetY = cy;
-    // Larger divisor + lower min zoom => the player appears smaller and
-    // you see much more of the surrounding world (players/pellets/viruses).
-    // Max zoom is capped a bit lower too so small cells pull back slightly.
+    // The bigger the divisor, the smaller the player appears on screen and
+    // the more of the surrounding world you see. Min zoom is pulled lower so
+    // big cells zoom way out (visible radius approaches a page-width).
     const r = massToRadius(mass);
-    const desired = Math.min(viewW, viewH) / (r * 30);
-    this.targetZoom = Math.max(0.20, Math.min(1.25, desired));
+    const desired = Math.min(viewW, viewH) / (r * 36);
+    this.targetZoom = Math.max(0.15, Math.min(1.15, desired));
   }
   step(dtSec) {
-    // Smoother camera with acceleration/deceleration (less jittery)
+    // --- Zoom: smooth, frame-rate-independent exponential approach (no
+    //     overshoot, no jitter). This is the "auto zoom in/out" curve. ---
+    const dz = this.targetZoom - this.zoom;
+    if (Math.abs(dz) < 0.0005) {
+      this.zoom = this.targetZoom;
+      this.vzoom = 0;
+    } else {
+      const zk = 1 - Math.exp(-dtSec * 6);   // higher = snappier
+      this.zoom += dz * zk;
+    }
+
+    // --- Position: velocity-based smoothing toward the target. ---
     const dx = this.targetX - this.x;
     const dy = this.targetY - this.y;
-    const dz = this.targetZoom - this.zoom;
-    
-    // Accelerate toward target, with damping
-    const accel = 15.0;
-    const damping = 0.88;
-    
+    const accel = 14.0;
+    const damping = 0.86;
+
     this.vx += dx * accel * dtSec;
     this.vy += dy * accel * dtSec;
-    this.vzoom += dz * accel * dtSec * 0.5;
-    
-    // Apply damping
     this.vx *= damping;
     this.vy *= damping;
-    this.vzoom *= damping;
-    
-    // Clamp velocities
-    const maxVel = 8000;
+
+    const maxVel = 9000;
     const vmag = Math.hypot(this.vx, this.vy);
     if (vmag > maxVel) {
       this.vx = (this.vx / vmag) * maxVel;
       this.vy = (this.vy / vmag) * maxVel;
     }
-    
-    // Integrate position
+
     this.x += this.vx * dtSec;
     this.y += this.vy * dtSec;
-    this.zoom += this.vzoom * dtSec;
-    
-    // Snap to target when very close (prevents micro-jitter)
-    const snapDist = 0.5;
-    if (Math.abs(dx) < snapDist && Math.abs(dy) < snapDist) {
+
+    // Snap when very close to avoid micro-jitter.
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
       this.x = this.targetX;
       this.y = this.targetY;
       this.vx = 0;
       this.vy = 0;
-    }
-    if (Math.abs(dz) < 0.001) {
-      this.zoom = this.targetZoom;
-      this.vzoom = 0;
     }
   }
   worldToScreen(x, y, viewW, viewH) {

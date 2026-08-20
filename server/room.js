@@ -326,33 +326,42 @@ export class Room {
       }
     }
 
-    // Pellet pickups. agar.io-style: a cell absorbs a pellet when their
-    // surfaces overlap (distance < cell.radius + pellet.radius). The 0.7
-    // factor we used before made the cell have to almost be on top of the
-    // pellet center, which made growth feel broken.
+    // Pellet pickups + virus feeding.
+    // Ejected mass can be shot INTO a virus: the virus absorbs the pellet,
+    // nudges in the direction it was fed, and after a random 10–15 pellets
+    // it shoots itself toward where you aimed (and can pop a player it hits).
     for (const pellet of this.pellets) {
       const candidates = [];
       grid.query(pellet.x, pellet.y, pellet.radius + 50, candidates);
+      let eaten = false;
+      if (pellet.ejected) {
+        for (const e of candidates) {
+          if (!(e instanceof Virus)) continue;
+          if (distance(pellet.x, pellet.y, e.x, e.y) < e.radius) {
+            const pvx = pellet.vx || 0, pvy = pellet.vy || 0;
+            // Feeder is behind the pellet's travel direction.
+            e.feed(CELL.EJECT_MASS_GAIN, e.x - pvx, e.y - pvy);
+            pellet._dead = true;
+            eaten = true;
+            if (e.canShoot()) e.shoot(pvx, pvy);
+            break;
+          }
+        }
+        if (eaten) continue;
+        // Slow decay of ejected mass that hits nothing.
+        if (Math.random() < 0.001) pellet._dead = true;
+      }
+      // Cell absorbs an ambient/ejected pellet when surfaces touch.
       for (const c of candidates) {
         if (!(c instanceof Cell)) continue;
         if (!c.owner.alive) continue;
-        // Surface-touching pickup: cell surface reaches the pellet's surface.
-        // Use a small bias so the cell can sweep up a pellet that's just
-        // touching the edge, like agar.io.
         const r = c.radius + pellet.radius * 0.6;
         if (distance(c.x, c.y, pellet.x, pellet.y) < r) {
           c.mass += pellet.mass;
-          // Cap mass at maximum size limit
-          if (c.mass > CELL.MAX_SIZE) {
-            c.mass = CELL.MAX_SIZE;
-          }
+          if (c.mass > CELL.MAX_SIZE) c.mass = CELL.MAX_SIZE;
           pellet._dead = true;
           break;
         }
-      }
-      if (pellet.ejected) {
-        // Slow decay of ejected mass
-        if (Math.random() < 0.001) pellet._dead = true;
       }
     }
     this.pellets = this.pellets.filter(p => !p._dead);
@@ -409,18 +418,6 @@ export class Room {
         }
       }
       
-      // Check if virus should create offspring (fed 7 times)
-      if (v.canCreateOffspring() && this.viruses.length < this.cfg.virusCount + 2) {
-        // Create new virus 7-12 units away in random direction
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 7 + Math.random() * 5; // 7-12 units
-        const newVirusX = clampX(v.x + Math.cos(angle) * dist * 100);
-        const newVirusY = clampY(v.y + Math.sin(angle) * dist * 100);
-        
-        const newVirus = new Virus(newVirusX, newVirusY, VIRUS.MASS);
-        this.viruses.push(newVirus);
-        v.resetAfterSplit();
-      }
     }
 
     // Pellet count maintenance — keep world topped up
@@ -611,9 +608,9 @@ export class Room {
       // their next pellet.
       const cellR = player.cells.reduce((m, c) => Math.max(m, c.radius), 0);
       // Larger viewport padding so the player sees more surrounding
-      // players/pellets/viruses (was cellR*8). Capped to avoid sending
-      // the whole world for very large cells.
-      const pad = Math.min(3500, Math.max(1200, cellR * 15));
+      // players/pellets/viruses, matching the wider zoomed-out view.
+      // Capped to avoid sending the whole world for very large cells.
+      const pad = Math.min(4000, Math.max(1300, cellR * 18));
       const viewMinX = Math.max(0, minX - pad);
       const viewMinY = Math.max(0, minY - pad);
       const viewMaxX = Math.min(WORLD.WIDTH, maxX + pad);
